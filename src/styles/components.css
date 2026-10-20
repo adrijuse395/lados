@@ -1541,3 +1541,17 @@ img.icon-preview {
   color: var(--text-faint);
   font-size: 12px;
 }
+
+.update-notes {
+  margin: 0;
+  max-height: 10rem;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, var(--bg-elevated, transparent));
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  white-space: pre-wrap;
+}

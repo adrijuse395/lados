@@ -1,5 +1,6 @@
 import { applyTheme } from "../app";
 import { backend } from "../services/backend";
+import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
 import type { Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
@@ -87,9 +88,27 @@ export async function openSettings(): Promise<void> {
       ),
       h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray),
       h(
+        "section",
+        { class: "settings-section" },
+        h("h3", { text: "Updates" }),
+        h(
+          "p",
+          { class: "muted", text: "Vault files never leave this computer. Optional update checks only contact GitHub Releases." },
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "button",
+            onClick: () => void checkForAppUpdateInteractive().catch(toastError),
+          },
+          "Check for updates",
+        ),
+      ),
+      h(
         "p",
         { class: "settings-about" },
-        `Lados ${store.status?.appVersion ?? ""} · Vaults are encrypted with XChaCha20-Poly1305 and a key derived with Argon2id. Lados never connects to the internet.`,
+        `Lados ${store.status?.appVersion ?? ""} · Vaults are encrypted with XChaCha20-Poly1305 and a key derived with Argon2id.`,
       ),
     ),
     hideCancel: true,

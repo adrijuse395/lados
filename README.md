@@ -76,7 +76,18 @@ git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 ```
 
-GitHub Actions then builds installers for Windows, macOS (Apple Silicon and Intel), and Linux, and attaches them to a **draft** GitHub Release for that tag. Review the draft, then publish it.
+GitHub Actions then builds installers for Windows, macOS (Apple Silicon and Intel), and Linux, signs updater artifacts, uploads `latest.json`, and attaches everything to a **draft** GitHub Release for that tag. Review the draft, then publish it.
+
+### Updater signing secrets
+
+Releases must sign update packages. The public key lives in `src-tauri/tauri.conf.json`. The private key is a repository secret:
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Contents of the private key file |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password if the key has one (omit or leave empty otherwise) |
+
+Installed apps check `https://github.com/adrijuse395/lados/releases/latest/download/latest.json` and can download/install the new build in-app. Vault data never leaves the machine; only that HTTPS check and the installer download use the network.
 
 ## Project layout
 

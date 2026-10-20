@@ -45,6 +45,12 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            {
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
             let config_dir = app.path().app_config_dir()?;
             app.manage(AppState::new(config_dir, vault_from_arguments()));
             tray::create(app.handle())?;

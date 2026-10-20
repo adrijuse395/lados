@@ -23,6 +23,7 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+.tauri-secrets/
 
 # Vaults, key files, and other local secrets (never commit real data)
 *.lados

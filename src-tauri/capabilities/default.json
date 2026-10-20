@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "The interface only needs to listen to backend events; every other operation goes through Lados commands.",
   "windows": ["main"],
-  "permissions": ["core:event:default"]
+  "permissions": [
+    "core:event:default",
+    "updater:default",
+    "process:default"
+  ]
 }

@@ -11,6 +11,7 @@ import { store } from "./state/store";
 import { h, isTyping } from "./ui/dom";
 import { alertDialog } from "./ui/modal";
 import { errorMessage, toast, toastError } from "./ui/toast";
+import { maybeOfferAppUpdate } from "./services/updater";
 import { trackActivity } from "./utils/activity";
 
 /** Keeps the web view from behaving like a browser: no page menu, no file drops that navigate away. */
@@ -67,6 +68,8 @@ async function start(): Promise<void> {
   });
 
   await showStatus(await backend.getStatus());
+  // Do not block startup on the network; offer an update only when one exists.
+  void maybeOfferAppUpdate();
 }
 
 start().catch((error: unknown) => {
