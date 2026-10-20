@@ -31,6 +31,15 @@ export interface GeneratorOptions {
   digits: boolean;
   symbols: boolean;
   excludeAmbiguous: boolean;
+  spaces: boolean;
+  excludeCharacters: string;
+  beginWithLetter: boolean;
+  noRepeating: boolean;
+  requireEachType: boolean;
+  minLowercase: number;
+  minUppercase: number;
+  minDigits: number;
+  minSymbols: number;
 }
 
 export interface Preferences {

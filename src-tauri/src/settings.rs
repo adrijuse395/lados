@@ -55,6 +55,13 @@ impl Preferences {
         self.auto_lock_minutes = self.auto_lock_minutes.min(MAX_AUTO_LOCK_MINUTES);
         self.clipboard_clear_seconds = self.clipboard_clear_seconds.min(MAX_CLIPBOARD_CLEAR_SECONDS);
         self.generator.length = self.generator.length.clamp(MIN_LENGTH, MAX_LENGTH);
+        self.generator.min_lowercase = self.generator.min_lowercase.min(32);
+        self.generator.min_uppercase = self.generator.min_uppercase.min(32);
+        self.generator.min_digits = self.generator.min_digits.min(32);
+        self.generator.min_symbols = self.generator.min_symbols.min(32);
+        if self.generator.exclude_characters.len() > 256 {
+            self.generator.exclude_characters = self.generator.exclude_characters.chars().take(256).collect();
+        }
         self
     }
 }

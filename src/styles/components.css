@@ -1439,6 +1439,67 @@ img.icon-preview {
   width: 80px;
 }
 
+.generator-advanced {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-sunken);
+}
+
+.generator-advanced > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  user-select: none;
+}
+
+.generator-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.generator-advanced > summary::after {
+  content: "▸";
+  float: right;
+  color: var(--text-faint);
+  transition: transform 140ms ease;
+}
+
+.generator-advanced[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.generator-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.generator-mins {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.generator-min {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.generator-min .length-input {
+  width: 100%;
+}
+
+@media (max-width: 520px) {
+  .generator-mins {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ----- History, reports, shortcuts and settings ----- */
 
 .history-list {
