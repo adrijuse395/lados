@@ -17,8 +17,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Create one draft up front so matrix jobs do not race into duplicate releases.
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-24.04
+    outputs:
+      release_id: ${{ steps.draft.outputs.id }}
+    steps:
+      - id: draft
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Lados ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          body: |
+            Offline-first password manager for Windows, macOS, and Linux.
+
+            Download the asset for your platform below. Build from source if you want to verify the binary against this tag.
+
   publish:
     name: Build (${{ matrix.name }})
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -70,13 +90,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Lados ${{ github.ref_name }}
-          releaseBody: |
-            Offline-first password manager for Windows, macOS, and Linux.
-
-            Download the asset for your platform below. Build from source if you want to verify the binary against this tag.
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           uploadUpdaterJson: false
           args: ${{ matrix.args }}
