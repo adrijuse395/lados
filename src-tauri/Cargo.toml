@@ -3,7 +3,7 @@ name = "lados"
 version = "0.1.0"
 description = "Lados: a fast, secure and offline password manager"
 authors = ["Adrià Junquera"]
-license = "MIT"
+license = "GPL-3.0-only"
 edition = "2024"
 rust-version = "1.90"
 
