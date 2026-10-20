@@ -1,0 +1,290 @@
+/* Design tokens, light and dark themes, and element defaults. */
+
+:root {
+  color-scheme: light;
+
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Mono", "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eff1f5;
+  --hover: rgba(24, 33, 57, 0.055);
+  --active: rgba(24, 33, 57, 0.1);
+  --border: #e3e6ec;
+  --border-strong: #cdd2db;
+  --text: #111418;
+  --text-muted: #5d6678;
+  --text-faint: #8b93a3;
+
+  --accent: #111418;
+  --accent-hover: #2c333d;
+  --accent-text: #f4f5f7;
+  --accent-soft: #eceef1;
+  --accent-soft-text: #111418;
+  --focus: rgba(17, 20, 24, 0.28);
+
+  --danger: #d92d20;
+  --danger-hover: #b42318;
+  --danger-soft: #fdeceb;
+  --danger-text: #b42318;
+  --warning: #b54708;
+  --warning-soft: #fef3e2;
+  --success: #067647;
+  --info: #175cd3;
+  --info-soft: #e8f0fd;
+
+  --digit: #1d4ed8;
+  --symbol: #c2410c;
+
+  --radius: 8px;
+  --shadow-small: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow: 0 6px 18px rgba(16, 24, 40, 0.08), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --shadow-large: 0 24px 48px -12px rgba(16, 24, 40, 0.28);
+  --backdrop: rgba(15, 18, 26, 0.45);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #111418;
+  --surface: #161a21;
+  --surface-raised: #1c212a;
+  --surface-sunken: #11141a;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.1);
+  --border: #262c36;
+  --border-strong: #363e4b;
+  --text: #e7eaf0;
+  --text-muted: #a0a8b8;
+  --text-faint: #6f7889;
+
+  --accent: #f4f5f7;
+  --accent-hover: #ffffff;
+  --accent-text: #111418;
+  --accent-soft: rgba(244, 245, 247, 0.1);
+  --accent-soft-text: #f4f5f7;
+  --focus: rgba(244, 245, 247, 0.4);
+
+  --danger: #e5484d;
+  --danger-hover: #f2555a;
+  --danger-soft: rgba(240, 68, 56, 0.15);
+  --danger-text: #fda29b;
+  --warning: #fdb022;
+  --warning-soft: rgba(253, 176, 34, 0.13);
+  --success: #47cd89;
+  --info: #84adff;
+  --info-soft: rgba(132, 173, 255, 0.14);
+
+  --digit: #7cb4ff;
+  --symbol: #ffa264;
+
+  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  --shadow-large: 0 24px 48px -12px rgba(0, 0, 0, 0.65);
+  --backdrop: rgba(0, 0, 0, 0.55);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  font: 14px/1.45 var(--font);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  cursor: default;
+  user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 22px;
+  font-weight: 650;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+dl,
+dd {
+  margin: 0;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+input,
+textarea,
+.selectable {
+  cursor: auto;
+  user-select: text;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--focus);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--border-strong);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-faint);
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon .solid {
+  fill: currentColor;
+  stroke: none;
+}
+
+.logo {
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+
+.logo.small {
+  width: 26px;
+  height: 26px;
+}
+
+.logo.medium {
+  width: 52px;
+  height: 52px;
+}
+
+.logo.large {
+  width: 76px;
+  height: 76px;
+  filter: drop-shadow(0 10px 18px rgba(17, 20, 24, 0.28));
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fatal-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 40px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

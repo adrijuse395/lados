@@ -1,0 +1,68 @@
+[package]
+name = "lados"
+version = "0.1.0"
+description = "Lados: a fast, secure and offline password manager"
+authors = ["Adrià Junquera"]
+license = "MIT"
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+# The library name differs from the binary name to avoid a PDB file name clash on Windows.
+name = "lados_lib"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# Desktop shell
+tauri = { version = "2.12", features = ["tray-icon"] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-clipboard-manager = "2.5"
+tauri-plugin-opener = "2.7"
+
+# Data model and serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+
+# Cryptography
+argon2 = { version = "0.6", default-features = false, features = ["alloc", "parallel", "zeroize"] }
+chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
+sha2 = "0.11"
+rand = "0.10"
+zeroize = { version = "1.9", features = ["derive"] }
+
+# Import / export
+csv = "1.4"
+keepass = { version = "0.15", features = ["save_kdbx4"] }
+base64 = "0.23"
+
+[dev-dependencies]
+tempfile = "3"
+
+# Key derivation is intentionally slow; without optimizations it becomes unbearable in debug builds.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.rust-argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.aes]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.chacha20]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

@@ -1,0 +1,41 @@
+# Dependencies and build output
+node_modules/
+dist/
+src-tauri/target/
+
+# Frontend tooling
+*.local
+.vite/
+
+# Logs and OS noise
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# Vaults, key files, and other local secrets (never commit real data)
+*.lados
+*.kdbx
+*.key
+*.keyx
+vaults/
+keys/
+
+# Local notes / scratch (keep the public repo focused)
+Desarrollo Gestor Contraseñas Multiplataforma.md
+
+# Tauri / packaging leftovers
+src-tauri/icons/ios/
+src-tauri/icons/android/
+src-tauri/WixTools/
