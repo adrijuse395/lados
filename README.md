@@ -64,6 +64,20 @@ cd src-tauri && cargo test
 npm run typecheck
 ```
 
+Continuous integration runs those checks on every push and pull request to `main`.
+
+## Releasing
+
+Version numbers live in `package.json` and `src-tauri/tauri.conf.json` (keep them in sync). To cut a release:
+
+```bash
+# after merging to main and bumping the version fields
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+GitHub Actions then builds installers for Windows, macOS (Apple Silicon and Intel), and Linux, and attaches them to a **draft** GitHub Release for that tag. Review the draft, then publish it.
+
 ## Project layout
 
 ```
