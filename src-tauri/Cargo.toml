@@ -1,6 +1,6 @@
 [package]
 name = "lados"
-version = "0.1.1"
+version = "0.1.2"
 description = "Lados: a fast, secure and offline password manager"
 authors = ["Adrià Junquera"]
 license = "GPL-3.0-only"
