@@ -257,6 +257,7 @@ fn migrate_legacy_mobile_vaults(app: &AppHandle, dest: &Path) {
     }
 }
 
+#[cfg(mobile)]
 fn imports_directory(app: &AppHandle, kind: FileKind) -> Result<PathBuf> {
     if matches!(kind, FileKind::Vault) {
         return vaults_directory(app);
@@ -316,7 +317,7 @@ pub fn list_device_vaults(app: AppHandle) -> Result<Vec<views::RecentVaultView>>
             exists: true,
         });
     }
-    vaults.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    vaults.sort_by_key(|a| a.file_name.to_lowercase());
     Ok(vaults)
 }
 
@@ -526,6 +527,7 @@ impl FileKind {
         }
     }
 
+    #[cfg(mobile)]
     fn default_file_name(self) -> String {
         match self {
             FileKind::Vault => format!("imported.{}", storage::FILE_EXTENSION),
@@ -537,6 +539,7 @@ impl FileKind {
     }
 }
 
+#[cfg(mobile)]
 fn file_name_from_pick(picked: &tauri_plugin_fs::FilePath, kind: FileKind) -> String {
     let fallback = kind.default_file_name();
     match picked {
@@ -566,17 +569,19 @@ fn file_name_from_pick(picked: &tauri_plugin_fs::FilePath, kind: FileKind) -> St
     }
 }
 
+#[cfg(mobile)]
 fn percent_decode(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let (Some(hi), Some(lo)) = (from_hex(bytes[i + 1]), from_hex(bytes[i + 2])) {
-                out.push((hi << 4) | lo);
-                i += 3;
-                continue;
-            }
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && let (Some(hi), Some(lo)) = (from_hex(bytes[i + 1]), from_hex(bytes[i + 2]))
+        {
+            out.push((hi << 4) | lo);
+            i += 3;
+            continue;
         }
         out.push(bytes[i]);
         i += 1;
@@ -584,6 +589,7 @@ fn percent_decode(input: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+#[cfg(mobile)]
 fn from_hex(byte: u8) -> Option<u8> {
     match byte {
         b'0'..=b'9' => Some(byte - b'0'),
@@ -593,6 +599,7 @@ fn from_hex(byte: u8) -> Option<u8> {
     }
 }
 
+#[cfg(mobile)]
 fn unique_destination(dir: &Path, file_name: &str) -> PathBuf {
     let candidate = dir.join(file_name);
     if !candidate.exists() {
@@ -618,6 +625,7 @@ fn unique_destination(dir: &Path, file_name: &str) -> PathBuf {
 }
 
 /// Turns a mobile picker result (often a content:// URI) into a normal file under app storage.
+#[cfg(mobile)]
 fn materialize_picked_file(
     app: &AppHandle,
     picked: tauri_plugin_fs::FilePath,
@@ -705,7 +713,7 @@ async fn open_dialog(app: AppHandle, window: WebviewWindow, kind: FileKind, titl
         if !path.is_file() {
             return Err(Error::invalid(format!("File not found: {}", path.display())));
         }
-        return Ok(Some(path));
+        Ok(Some(path))
     }
 
     #[cfg(mobile)]
