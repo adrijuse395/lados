@@ -40,3 +40,10 @@ Desarrollo Gestor Contraseñas Multiplataforma.md
 src-tauri/icons/ios/
 src-tauri/icons/android/
 src-tauri/WixTools/
+
+# Android build products (keep gen/android project sources; ignore binaries)
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/**/jniLibs/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/.kotlin/
+src-tauri/gen/android/local.properties

@@ -1,6 +1,8 @@
 # Lados
 
-**Lados** is a fast, offline-first password manager for desktop. Your vault stays on your machine — there is no cloud account, no sync server, and no telemetry.
+**Lados** is a fast, offline-first password manager. Your vault stays on your machine — there is no cloud account, no sync server, and no telemetry.
+
+Desktop (Windows, macOS, Linux) is the primary shell today. **Android** is being brought up in this same repository via Tauri Mobile (see [docs/MOBILE.md](docs/MOBILE.md)).
 
 The name comes from [Ladon](https://en.wikipedia.org/wiki/Ladon_(mythology)), the dragon that guarded the golden apples of the Hesperides: quiet custody, not conquest.
 
@@ -9,10 +11,10 @@ The name comes from [Ladon](https://en.wikipedia.org/wiki/Ladon_(mythology)), th
 - Local encrypted vaults (`.lados`)
 - Master password and optional key file
 - Nested folders, entry history, and soft-delete tombstones
-- Smart merge when combining two vaults
+- Smart merge when combining two vaults (e.g. phone + PC, without a sync server)
 - CSV and KeePass (`.kdbx`) import / export
 - Password generator, clipboard auto-clear, and auto-lock
-- Cross-platform desktop shell (Windows, macOS, Linux) via [Tauri](https://tauri.app/) v2
+- Cross-platform shell via [Tauri](https://tauri.app/) v2 (desktop now; Android in progress)
 
 ## Cryptography
 

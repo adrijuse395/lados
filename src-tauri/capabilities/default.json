@@ -1,11 +1,17 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The interface only needs to listen to backend events; every other operation goes through Lados commands.",
+  "description": "Shared permissions for desktop and mobile. Vault work goes through Lados commands.",
   "windows": ["main"],
+  "webviews": ["main"],
   "permissions": [
+    "core:default",
     "core:event:default",
-    "updater:default",
-    "process:default"
+    "dialog:default",
+    "fs:default",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-write-secret",
+    "clipboard-manager:allow-clear",
+    "opener:default"
   ]
 }

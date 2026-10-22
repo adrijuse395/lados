@@ -1,7 +1,7 @@
 {
   "name": "lados",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Lados: a fast, secure and offline password manager",
   "license": "GPL-3.0-only",
   "type": "module",
@@ -9,7 +9,10 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "android:init": "tauri android init",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

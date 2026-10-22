@@ -21,12 +21,15 @@ mod session;
 mod settings;
 mod state;
 mod storage;
+#[cfg(desktop)]
 mod tray;
 mod views;
 
 use std::path::PathBuf;
 
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent};
+#[cfg(desktop)]
+use tauri::WindowEvent;
 
 use crate::state::AppState;
 
@@ -39,9 +42,11 @@ fn vault_from_arguments() -> Option<PathBuf> {
     })
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -53,11 +58,13 @@ pub fn run() {
             }
             let config_dir = app.path().app_config_dir()?;
             app.manage(AppState::new(config_dir, vault_from_arguments()));
+            #[cfg(desktop)]
             tray::create(app.handle())?;
             background::start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(desktop)]
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
                 let to_tray = state.settings().preferences.close_to_tray;
@@ -66,6 +73,8 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+            #[cfg(mobile)]
+            let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
@@ -84,6 +93,9 @@ pub fn run() {
             commands::rename_vault,
             commands::pick_open_path,
             commands::pick_save_path,
+            commands::is_mobile_shell,
+            commands::suggested_vault_path,
+            commands::list_device_vaults,
             commands::search_entries,
             commands::get_entry,
             commands::get_entry_for_edit,

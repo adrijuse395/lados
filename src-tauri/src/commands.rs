@@ -144,6 +144,182 @@ fn with_extension(path: PathBuf, extension: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+fn safe_vault_file_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '-',
+            _ => c,
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    if cleaned.is_empty() {
+        "Vault".into()
+    } else {
+        cleaned
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileKind {
+    Vault,
+    KeyFile,
+    Csv,
+    Kdbx,
+    Image,
+}
+
+/// Where `.lados` vaults live.
+///
+/// On mobile this is the shared `Documents/Lados` folder so vaults survive app
+/// uninstall/reinstall. App-private storage is wiped by Android on uninstall, which
+/// is unacceptable for a password manager.
+fn vaults_directory(app: &AppHandle) -> Result<PathBuf> {
+    #[cfg(mobile)]
+    {
+        let dir = persistent_mobile_vaults_dir(app)?;
+        migrate_legacy_mobile_vaults(app, &dir);
+        return Ok(dir);
+    }
+    #[cfg(not(mobile))]
+    {
+        let base = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| Error::System(error.to_string()))?;
+        let dir = base.join("vaults");
+        std::fs::create_dir_all(&dir).map_err(|error| Error::System(error.to_string()))?;
+        Ok(dir)
+    }
+}
+
+#[cfg(mobile)]
+fn persistent_mobile_vaults_dir(app: &AppHandle) -> Result<PathBuf> {
+    // home_dir on Android is the shared external storage root (e.g. /storage/emulated/0).
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| Error::System(error.to_string()))?;
+    let dir = home.join("Documents").join("Lados");
+    std::fs::create_dir_all(&dir).map_err(|error| {
+        Error::System(format!(
+            "Could not create Documents/Lados. Allow Lados to manage files on this device, then try again. ({error})"
+        ))
+    })?;
+    // Prove we can write; otherwise the user still needs the storage permission.
+    let probe = dir.join(".lados-write-check");
+    std::fs::write(&probe, b"ok").map_err(|error| {
+        Error::System(format!(
+            "Documents/Lados is not writable yet. Open Android settings and allow Lados “All files access”, then return to the app. ({error})"
+        ))
+    })?;
+    let _ = std::fs::remove_file(&probe);
+    Ok(dir)
+}
+
+/// Older builds stored vaults under app-private storage (deleted on uninstall).
+/// Copy any survivors into Documents/Lados once.
+#[cfg(mobile)]
+fn migrate_legacy_mobile_vaults(app: &AppHandle, dest: &Path) {
+    let mut sources = Vec::new();
+    if let Ok(app_data) = app.path().app_data_dir() {
+        sources.push(app_data.join("vaults"));
+    }
+    // Tauri's document_dir is app-specific external storage (also wiped on uninstall).
+    if let Ok(docs) = app.path().document_dir() {
+        sources.push(docs.clone());
+        sources.push(docs.join("Lados"));
+    }
+    for source in sources {
+        let Ok(entries) = std::fs::read_dir(&source) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let is_vault = path
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case(storage::FILE_EXTENSION))
+                && path.is_file();
+            if !is_vault {
+                continue;
+            }
+            let Some(name) = path.file_name() else {
+                continue;
+            };
+            let target = dest.join(name);
+            if target.exists() {
+                continue;
+            }
+            let _ = std::fs::copy(&path, &target);
+        }
+    }
+}
+
+fn imports_directory(app: &AppHandle, kind: FileKind) -> Result<PathBuf> {
+    if matches!(kind, FileKind::Vault) {
+        return vaults_directory(app);
+    }
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| Error::System(error.to_string()))?;
+    let name = match kind {
+        FileKind::KeyFile => "keys",
+        FileKind::Csv | FileKind::Kdbx => "imports",
+        FileKind::Image => "icons",
+        FileKind::Vault => unreachable!("vaults use vaults_directory"),
+    };
+    let dir = base.join(name);
+    std::fs::create_dir_all(&dir).map_err(|error| Error::System(error.to_string()))?;
+    Ok(dir)
+}
+
+#[tauri::command]
+pub fn is_mobile_shell() -> bool {
+    cfg!(mobile)
+}
+
+#[tauri::command]
+pub fn suggested_vault_path(app: AppHandle, name: String) -> Result<String> {
+    let path = vaults_directory(&app)?.join(format!(
+        "{}.{}",
+        safe_vault_file_stem(&name),
+        storage::FILE_EXTENSION
+    ));
+    Ok(views::path_text(&path))
+}
+
+/// Vaults already stored in the app folder (created or imported on this device).
+#[tauri::command]
+pub fn list_device_vaults(app: AppHandle) -> Result<Vec<views::RecentVaultView>> {
+    let dir = vaults_directory(&app)?;
+    let mut vaults = Vec::new();
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(vaults),
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_vault = path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(storage::FILE_EXTENSION))
+            && path.is_file();
+        if !is_vault {
+            continue;
+        }
+        vaults.push(views::RecentVaultView {
+            path: views::path_text(&path),
+            file_name: views::file_name(&path),
+            key_file: None,
+            exists: true,
+        });
+    }
+    vaults.sort_by(|a, b| a.file_name.to_lowercase().cmp(&b.file_name.to_lowercase()));
+    Ok(vaults)
+}
+
 /// The file name without extension, used to name the folder that receives an import.
 fn source_name(path: &Path) -> String {
     path.file_stem()
@@ -339,16 +515,6 @@ pub fn rename_vault(app: AppHandle, state: State<'_, AppState>, name: String) ->
 
 // ----- File dialogs -----
 
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum FileKind {
-    Vault,
-    KeyFile,
-    Csv,
-    Kdbx,
-    Image,
-}
-
 impl FileKind {
     fn filter(self) -> (&'static str, &'static [&'static str]) {
         match self {
@@ -359,19 +525,193 @@ impl FileKind {
             FileKind::Image => ("Image", &["png", "jpg", "jpeg", "gif", "webp", "ico"]),
         }
     }
+
+    fn default_file_name(self) -> String {
+        match self {
+            FileKind::Vault => format!("imported.{}", storage::FILE_EXTENSION),
+            FileKind::KeyFile => "key.keyx".into(),
+            FileKind::Csv => format!("import.{}", csv_io::FILE_EXTENSION),
+            FileKind::Kdbx => format!("import.{}", keepass_io::FILE_EXTENSION),
+            FileKind::Image => "icon.png".into(),
+        }
+    }
+}
+
+fn file_name_from_pick(picked: &tauri_plugin_fs::FilePath, kind: FileKind) -> String {
+    let fallback = kind.default_file_name();
+    match picked {
+        tauri_plugin_fs::FilePath::Path(path) => path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .filter(|name| !name.is_empty())
+            .unwrap_or(fallback),
+        tauri_plugin_fs::FilePath::Url(url) => {
+            // Android document URIs often end with an encoded name like ...%2FVault.lados
+            let raw = url
+                .path_segments()
+                .and_then(|mut segments| segments.next_back())
+                .unwrap_or("");
+            let decoded = percent_decode(raw);
+            let candidate = decoded
+                .rsplit(['/', '\\', ':'])
+                .next()
+                .unwrap_or(&decoded)
+                .trim();
+            if candidate.is_empty() || candidate == "document" || candidate.chars().all(|c| c.is_ascii_digit()) {
+                fallback
+            } else {
+                candidate.to_string()
+            }
+        }
+    }
+}
+
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (from_hex(bytes[i + 1]), from_hex(bytes[i + 2])) {
+                out.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn from_hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn unique_destination(dir: &Path, file_name: &str) -> PathBuf {
+    let candidate = dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    let extension = path.extension().map(|s| s.to_string_lossy().into_owned());
+    for index in 2..10_000 {
+        let name = match &extension {
+            Some(ext) => format!("{stem} ({index}).{ext}"),
+            None => format!("{stem} ({index})"),
+        };
+        let candidate = dir.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{stem}-{}.tmp", Uuid::new_v4()))
+}
+
+/// Turns a mobile picker result (often a content:// URI) into a normal file under app storage.
+fn materialize_picked_file(
+    app: &AppHandle,
+    picked: tauri_plugin_fs::FilePath,
+    kind: FileKind,
+) -> Result<PathBuf> {
+    let dest_dir = imports_directory(app, kind)?;
+    let mut file_name = file_name_from_pick(&picked, kind);
+    if matches!(kind, FileKind::Vault)
+        && !file_name
+            .to_ascii_lowercase()
+            .ends_with(&format!(".{}", storage::FILE_EXTENSION))
+    {
+        file_name = format!("{file_name}.{}", storage::FILE_EXTENSION);
+    }
+    let destination = unique_destination(&dest_dir, &file_name);
+
+    if let Ok(path) = picked.clone().into_path()
+        && path.is_file()
+    {
+        if path.starts_with(&dest_dir) {
+            return Ok(path);
+        }
+        std::fs::copy(&path, &destination).map_err(|error| Error::System(error.to_string()))?;
+        return Ok(destination);
+    }
+
+    // Android: content:// cannot be opened with std::fs — copy via the FS plugin.
+    let bytes = tauri_plugin_fs::FsExt::fs(app)
+        .read(picked)
+        .map_err(|error| {
+            Error::System(format!(
+                "Could not read the selected file. Try picking it again from Files or Downloads. ({error})"
+            ))
+        })?;
+    if bytes.is_empty() {
+        return Err(Error::invalid("The selected file is empty"));
+    }
+    std::fs::write(&destination, &bytes).map_err(|error| Error::System(error.to_string()))?;
+    Ok(destination)
 }
 
 async fn open_dialog(app: AppHandle, window: WebviewWindow, kind: FileKind, title: String) -> Result<Option<PathBuf>> {
-    run_blocking(move || {
-        let (name, extensions) = kind.filter();
-        let mut dialog = app.dialog().file().set_title(title).set_parent(&window).add_filter(name, extensions);
-        if matches!(kind, FileKind::KeyFile) {
-            // Any file can act as a key file.
-            dialog = dialog.add_filter("All files", &["*"]);
+    let start_dir = match kind {
+        FileKind::Vault => vaults_directory(&app).ok(),
+        _ => None,
+    };
+    let picked = run_blocking({
+        let app = app.clone();
+        move || {
+            let (name, extensions) = kind.filter();
+            let dialog = app.dialog().file().set_title(title);
+            #[cfg(desktop)]
+            let dialog = dialog.set_parent(&window);
+            #[cfg(mobile)]
+            let _ = &window;
+            let mut dialog = dialog.add_filter(name, extensions);
+            // Prefer the standard vaults folder so open/save start in the same place.
+            // (On Android the system picker often ignores this; the mobile UI lists that folder first.)
+            if let Some(dir) = start_dir {
+                dialog = dialog.set_directory(dir);
+            }
+            // On Android, unknown extensions like `.lados` often have no MIME mapping, so the
+            // filtered picker shows nothing usable. Offer a catch-all MIME as well.
+            #[cfg(mobile)]
+            {
+                dialog = dialog.add_filter("All files", &["*/*"]);
+            }
+            #[cfg(desktop)]
+            if matches!(kind, FileKind::KeyFile) {
+                // Any file can act as a key file.
+                dialog = dialog.add_filter("All files", &["*"]);
+            }
+            Ok(dialog.blocking_pick_file())
         }
-        Ok(dialog.blocking_pick_file().and_then(|path| path.into_path().ok()))
     })
-    .await
+    .await?;
+
+    let Some(picked) = picked else {
+        return Ok(None);
+    };
+
+    #[cfg(desktop)]
+    {
+        let path = picked.into_path().map_err(|_| Error::invalid("Could not use the selected file"))?;
+        if !path.is_file() {
+            return Err(Error::invalid(format!("File not found: {}", path.display())));
+        }
+        return Ok(Some(path));
+    }
+
+    #[cfg(mobile)]
+    {
+        Ok(Some(materialize_picked_file(&app, picked, kind)?))
+    }
 }
 
 async fn save_dialog(
@@ -381,9 +721,21 @@ async fn save_dialog(
     title: String,
     suggested_name: Option<String>,
 ) -> Result<Option<PathBuf>> {
+    let start_dir = match kind {
+        FileKind::Vault => vaults_directory(&app).ok(),
+        _ => None,
+    };
     run_blocking(move || {
         let (name, extensions) = kind.filter();
-        let mut dialog = app.dialog().file().set_title(title).set_parent(&window).add_filter(name, extensions);
+        let dialog = app.dialog().file().set_title(title);
+        #[cfg(desktop)]
+        let dialog = dialog.set_parent(&window);
+        #[cfg(mobile)]
+        let _ = &window;
+        let mut dialog = dialog.add_filter(name, extensions);
+        if let Some(dir) = start_dir {
+            dialog = dialog.set_directory(dir);
+        }
         if let Some(file_name) = suggested_name {
             dialog = dialog.set_file_name(file_name);
         }

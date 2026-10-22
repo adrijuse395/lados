@@ -1,6 +1,7 @@
 // Shown when a vault is selected but locked.
 
 import { showStatus } from "../app";
+import { pickVaultToOpen } from "../dialogs/open-vault";
 import { backend, isCredentialError } from "../services/backend";
 import { store } from "../state/store";
 import { field, keyFileField, passwordInput } from "../ui/controls";
@@ -51,7 +52,7 @@ export function renderUnlock(container: HTMLElement): void {
 
   const openAnother = async () => {
     try {
-      const path = await backend.pickOpenPath("vault", "Open a vault");
+      const path = await pickVaultToOpen();
       if (path) await showStatus(await backend.selectVault(path));
     } catch (failure) {
       toastError(failure);

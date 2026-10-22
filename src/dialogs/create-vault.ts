@@ -13,22 +13,59 @@ export function safeFileName(name: string, fallback: string): string {
 }
 
 export async function createVaultDialog(): Promise<AppStatus | null> {
+  const mobile = await backend.isMobileShell();
   let location: string | null = null;
+  /** When true, renaming the vault updates the standard app vaults path. */
+  let usingSuggestedPath = mobile;
 
-  const name = h("input", { class: "input", value: "My vault", spellcheck: false, autocomplete: "off", "data-autofocus": "" });
+  const name = h("input", {
+    class: "input",
+    value: "My vault",
+    spellcheck: false,
+    autocomplete: "off",
+    "data-autofocus": "",
+  });
   const locationName = h("span", { class: "location-name", text: "Not chosen yet" });
   const locationPath = h("span", { class: "location-path" });
+
+  const showLocation = (path: string) => {
+    location = path;
+    locationName.textContent = fileNameOf(path);
+    locationPath.textContent = path;
+  };
+
+  const applySuggestedPath = async () => {
+    const path = await backend.suggestedVaultPath(name.value.trim() || "My vault");
+    usingSuggestedPath = true;
+    showLocation(path);
+  };
+
   const chooseLocation = async (): Promise<boolean> => {
+    if (mobile) {
+      // Android save pickers return content:// URIs that std::fs cannot write.
+      await applySuggestedPath();
+      return true;
+    }
     const suggested = `${safeFileName(name.value, "Vault")}.lados`;
     const picked = await backend.pickSavePath("vault", "Where should the vault be saved?", suggested);
     if (picked) {
-      location = picked;
-      locationName.textContent = fileNameOf(picked);
-      locationPath.textContent = picked;
+      usingSuggestedPath = false;
+      showLocation(picked);
     }
     return picked !== null;
   };
-  const locationButton = h("button", { type: "button", class: "button small", onClick: () => void chooseLocation() }, "Choose…");
+
+  if (mobile) {
+    await applySuggestedPath();
+  }
+
+  name.addEventListener("input", () => {
+    if (usingSuggestedPath) void applySuggestedPath().catch(() => undefined);
+  });
+
+  const locationButton = mobile
+    ? null
+    : h("button", { type: "button", class: "button small", onClick: () => void chooseLocation() }, "Choose…");
 
   const password = passwordInput({ strength: true, placeholder: "Choose a strong password" });
   const confirmation = passwordInput({ placeholder: "Type it again" });
@@ -43,8 +80,21 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
       field("Vault name", name),
       field(
         "File",
-        h("div", { class: "location-field" }, svgIcon("folder"), h("div", { class: "location-text" }, locationName, locationPath), locationButton),
-        { target: locationButton },
+        h(
+          "div",
+          { class: "location-field" },
+          svgIcon("folder"),
+          h("div", { class: "location-text" }, locationName, locationPath),
+          locationButton,
+        ),
+        {
+          ...(locationButton ? { target: locationButton } : {}),
+          ...(mobile
+            ? {
+                hint: "Saved in Documents › Lados on this phone. That folder stays even if you uninstall the app.",
+              }
+            : {}),
+        },
       ),
       field("Master password", password.element, { target: password.input }),
       field("Confirm the master password", confirmation.element, { target: confirmation.input }),
@@ -55,7 +105,9 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
         "div",
         { class: "notice warning" },
         svgIcon("warning"),
-        h("span", { text: "Nobody can recover a forgotten master password or a lost key file, not even Lados. Keep them safe." }),
+        h("span", {
+          text: "Nobody can recover a forgotten master password or a lost key file, not even Lados. Keep them safe.",
+        }),
       ),
     ),
     submitLabel: "Create vault",
@@ -73,9 +125,11 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
         confirmation.input.focus();
         throw new Error("The passwords do not match");
       }
-      if (!location && !(await chooseLocation())) {
-        throw new Error("Choose where to save the vault");
+      if (!location) {
+        if (mobile) await applySuggestedPath();
+        else if (!(await chooseLocation())) throw new Error("Choose where to save the vault");
       }
+      if (!location) throw new Error("Choose where to save the vault");
       if (estimateStrength(password.value()).score < 2) {
         const proceed = await confirmDialog({
           title: "Weak master password",
@@ -85,7 +139,7 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
         });
         if (!proceed) return undefined;
       }
-      return backend.createVault(location as string, name.value.trim(), password.value(), keyFile.value());
+      return backend.createVault(location, name.value.trim(), password.value(), keyFile.value());
     },
   });
 }

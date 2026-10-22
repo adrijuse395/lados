@@ -107,6 +107,14 @@ export function renderVault(container: HTMLElement): void {
   const sidebar = h("aside", { class: "sidebar", "aria-label": "Folders" });
   const list = h("section", { class: "entry-pane", "aria-label": "Entries" });
   const details = h("section", { class: "details-pane", "aria-label": "Entry details" });
+  const closeFolders = () => screen.classList.remove("sidebar-open");
+  const toggleFolders = () => screen.classList.toggle("sidebar-open");
+  const foldersBackdrop = h("button", {
+    type: "button",
+    class: "sidebar-backdrop",
+    "aria-label": "Close folders",
+    onClick: closeFolders,
+  });
 
   const screen = h(
     "div",
@@ -114,23 +122,81 @@ export function renderVault(container: HTMLElement): void {
     h(
       "header",
       { class: "topbar" },
+      h(
+        "button",
+        {
+          type: "button",
+          class: "icon-button folders-toggle",
+          title: "Folders",
+          "aria-label": "Folders",
+          onClick: toggleFolders,
+        },
+        svgIcon("folder"),
+        h("span", { class: "folders-toggle-label", text: "Folders" }),
+      ),
       h("div", { class: "topbar-brand" }, dragonMark("logo small"), name),
       h("label", { class: "search-box" }, svgIcon("search"), search, h("kbd", { text: "Ctrl+F" })),
       h(
         "div",
         { class: "topbar-actions" },
-        h("button", { type: "button", class: "button primary", title: "New entry (Ctrl+N)", onClick: () => void actions.newEntry() }, svgIcon("plus"), "New entry"),
-        iconButton("dice", "Password generator (Ctrl+G)", () => void actions.showGenerator()),
-        iconButton("lock", "Lock (Ctrl+L)", () => void actions.lockVault()),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "button primary topbar-new",
+            title: "New entry (Ctrl+N)",
+            onClick: () => void actions.newEntry(),
+          },
+          svgIcon("plus"),
+          h("span", { class: "button-label", text: "New entry" }),
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "button topbar-tool",
+            title: "Password generator (Ctrl+G)",
+            "aria-label": "Password generator",
+            onClick: () => void actions.showGenerator(),
+          },
+          svgIcon("dice"),
+          h("span", { class: "button-label", text: "Generate" }),
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            class: "button topbar-tool",
+            title: "Lock (Ctrl+L)",
+            "aria-label": "Lock vault",
+            onClick: () => void actions.lockVault(),
+          },
+          svgIcon("lock"),
+          h("span", { class: "button-label", text: "Lock" }),
+        ),
         iconButton("more", "More actions", (event) => openMoreMenu(event.currentTarget as HTMLElement)),
       ),
     ),
+    foldersBackdrop,
     h("div", { class: "panes" }, sidebar, list, details),
   );
+
+  sidebar.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    // Close the drawer after choosing a view/folder (ignore expand/collapse and row menus).
+    if (target?.closest("button.nav-item, .tree-row") && !target.closest("button.tree-toggle, button.row-action")) {
+      closeFolders();
+    }
+  });
 
   mount(container, screen);
   elements = { screen, name, search, sidebar, list, details };
   drawVault();
+}
+
+function syncDetailsOpenState(): void {
+  if (!elements) return;
+  elements.screen.classList.toggle("details-open", store.selectedEntryId !== null);
 }
 
 /** Redraws every pane from the store. */
@@ -139,6 +205,7 @@ export function drawVault(): void {
   elements.name.textContent = store.vault.name;
   elements.name.title = store.vault.path;
   if (document.activeElement !== elements.search) elements.search.value = store.query;
+  syncDetailsOpenState();
   renderSidebar(elements.sidebar);
   renderEntryList(elements.list);
   void renderEntryDetails(elements.details);
@@ -146,6 +213,7 @@ export function drawVault(): void {
 
 export function updateSelection(): void {
   if (!elements || !isVaultMounted()) return;
+  syncDetailsOpenState();
   highlightSelection();
   void renderEntryDetails(elements.details);
 }

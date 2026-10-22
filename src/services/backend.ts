@@ -13,6 +13,7 @@ import type {
   ImportSummary,
   MergeReport,
   Preferences,
+  RecentVault,
   RevisionSummary,
   Uuid,
   VaultView,
@@ -69,7 +70,10 @@ export const backend = {
   getVaultView: () => call<VaultView>("get_vault_view"),
   renameVault: (name: string) => call<void>("rename_vault", { name }),
 
-  // File dialogs
+  // File dialogs / vault location
+  isMobileShell: () => call<boolean>("is_mobile_shell"),
+  suggestedVaultPath: (name: string) => call<string>("suggested_vault_path", { name }),
+  listDeviceVaults: () => call<RecentVault[]>("list_device_vaults"),
   pickOpenPath: (kind: FileKind, title: string) => call<string | null>("pick_open_path", { kind, title }),
   pickSavePath: (kind: FileKind, title: string, suggestedName: string | null = null) =>
     call<string | null>("pick_save_path", { kind, title, suggestedName }),
