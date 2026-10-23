@@ -21,19 +21,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Create one draft up front so matrix jobs do not race into duplicate releases.
+  # Create one release up front so matrix jobs do not race into duplicate releases.
+  # Published immediately so /releases/latest and the in-app updater see it when builds finish.
   create-release:
-    name: Create draft release
+    name: Create release
     runs-on: ubuntu-24.04
     outputs:
-      release_id: ${{ steps.draft.outputs.id }}
+      release_id: ${{ steps.release.outputs.id }}
     steps:
-      - id: draft
+      - id: release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Lados ${{ github.ref_name }}
-          draft: true
+          draft: false
           prerelease: false
           body: |
             Offline-first password manager for Windows, macOS, and Linux.

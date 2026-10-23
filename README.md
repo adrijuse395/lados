@@ -78,7 +78,7 @@ git tag -a v0.1.0 -m "Release v0.1.0"
 git push origin v0.1.0
 ```
 
-GitHub Actions then builds installers for Windows, macOS (Apple Silicon and Intel), and Linux, signs updater artifacts, uploads `latest.json`, and attaches everything to a **draft** GitHub Release for that tag. Review the draft, then publish it.
+GitHub Actions then builds installers for Windows, macOS (Apple Silicon and Intel), and Linux, signs updater artifacts, uploads `latest.json`, and publishes a GitHub Release for that tag. Installed apps pick it up via the in-app updater once the workflow finishes.
 
 ### Updater signing secrets
 
