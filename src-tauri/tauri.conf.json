@@ -40,10 +40,14 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "icons/lados-file.ico"
+    ],
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "uninstallerIcon": "icons/icon.ico"
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "./windows/nsis-hooks.nsh"
       }
     },
     "fileAssociations": [
@@ -57,6 +61,11 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["lados"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA5NjM4OEEzODFFNzMzNUQKUldSZE0rZUJvNGhqQ2Z6ZVBjbG9YVjFKcVFGQVZTV1ZzclNnQ0pyUVo5TkE2Tkh5Tk9JNW5rYlcK",
       "endpoints": [

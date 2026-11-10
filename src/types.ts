@@ -2,6 +2,7 @@
 
 export type Uuid = string;
 
+/** Core session: prefer UI wording “No vault” / “Locked” / “Unlocked” (not “Closed”). */
 export type SessionState = "closed" | "locked" | "unlocked";
 export type Theme = "system" | "light" | "dark";
 export type LockReason = "user" | "inactivity" | "tray";
@@ -87,6 +88,14 @@ export interface EntrySummary {
   expirationDate: string | null;
   modifiedAt: string;
   hasPassword: boolean;
+}
+
+export type UrlMatchKind = "exactHost" | "parentHost";
+
+/** Autofill candidate for a page URL (no secrets). */
+export interface UrlMatchHit {
+  entry: EntrySummary;
+  matchKind: UrlMatchKind;
 }
 
 export interface CustomIconView {

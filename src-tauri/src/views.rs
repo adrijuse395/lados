@@ -9,16 +9,17 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::models::{CustomIcon, Entry, Folder, Icon, Vault};
+use crate::models::{CustomIcon, Entry, Folder, Icon, UrlMatchKind, Vault};
 use crate::settings::{Preferences, RecentVault};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SessionState {
-    /// No vault selected: the welcome screen.
+    /// No vault selected (welcome). Prefer saying “No vault”, not “Closed”.
     Closed,
-    /// A vault is selected but its contents are not in memory.
+    /// A vault is selected but secrets are not in memory. UI: “Locked” / Unlock.
     Locked,
+    /// Vault open in memory. UI: “Unlocked” only when status matters (tray, autofill).
     Unlocked,
 }
 
@@ -139,6 +140,38 @@ impl From<&Entry> for EntrySummary {
             has_password: !entry.content.password.is_empty(),
         }
     }
+}
+
+/// One autofill candidate for a page URL (no secrets).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UrlMatchHit {
+    pub entry: EntrySummary,
+    /// `exactHost` | `parentHost`
+    pub match_kind: &'static str,
+}
+
+impl UrlMatchHit {
+    pub fn new(entry: &Entry, kind: UrlMatchKind) -> Self {
+        UrlMatchHit {
+            entry: EntrySummary::from(entry),
+            match_kind: match kind {
+                UrlMatchKind::ExactHost => "exactHost",
+                UrlMatchKind::ParentHost => "parentHost",
+            },
+        }
+    }
+}
+
+/// Unlocked-session payload for Android Autofill (passwords included; RAM only).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutofillPayloadEntry {
+    pub id: Uuid,
+    pub title: String,
+    pub username: String,
+    pub password: String,
+    pub url: Option<String>,
 }
 
 /// The details panel. Protected values are replaced by `None` until the user reveals them.

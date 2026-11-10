@@ -39,6 +39,8 @@ android {
             }
         }
         getByName("release") {
+            // Test build: sign with the debug key so the APK installs on a phone.
+            signingConfig = signingConfigs.getByName("debug")
             optimization {
                enable = true
             }

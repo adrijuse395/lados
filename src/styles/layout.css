@@ -243,8 +243,8 @@
   grid-template-columns: minmax(150px, 228px) minmax(180px, 1fr) auto;
   align-items: center;
   gap: 16px;
-  min-height: 56px;
-  padding: env(safe-area-inset-top, 0px) 12px 0 16px;
+  height: 56px;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -253,7 +253,8 @@
   display: contents;
 }
 
-.folders-toggle {
+/* Higher specificity than .icon-button (loaded later) so the drawer control stays mobile-only. */
+.topbar .folders-toggle {
   display: none;
 }
 
@@ -459,9 +460,10 @@
     grid-template-areas:
       "folders search"
       "actions actions";
-    gap: 10px;
+    height: auto;
     min-height: 0;
     align-items: stretch;
+    gap: 10px;
     padding: 10px max(10px, env(safe-area-inset-right, 0px)) 10px max(10px, env(safe-area-inset-left, 0px));
     padding-top: max(10px, env(safe-area-inset-top, 0px));
   }
@@ -471,7 +473,7 @@
     display: none;
   }
 
-  .folders-toggle {
+  .topbar .folders-toggle {
     grid-area: folders;
     display: inline-flex;
     flex: none;

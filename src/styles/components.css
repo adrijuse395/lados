@@ -559,6 +559,23 @@ select.input.compact {
   user-select: text;
 }
 
+.install-steps {
+  padding: 12px;
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.install-steps ol {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.install-steps li {
+  margin: 3px 0;
+}
+
 /* ----- Dialogs ----- */
 
 .modal-backdrop {
@@ -1726,4 +1743,50 @@ img.icon-preview {
   font: inherit;
   font-size: 13px;
   white-space: pre-wrap;
+}
+
+.url-match-results {
+  max-height: min(40vh, 320px);
+  overflow: auto;
+}
+
+.url-match-hit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.url-match-hit:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.url-match-hit__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.url-match-hit__kind {
+  align-self: start;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.url-match-hit__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
 }

@@ -115,6 +115,25 @@ Check: top bar does not sit under a fake status bar (Android status bar is handl
 
 AVD `lados_phone` exists for full APK installs when the emulator GPU works; on this machine it often hangs — prefer Chrome device mode for CSS and the physical phone for the real shell.
 
+## Autofill (Android)
+
+Lados registers a system **AutofillService** (apps + many browser logins). No Chrome Web Store fee.
+
+### Enable once on the phone
+
+1. Install your debug/release APK.
+2. Open **Settings → Passwords & accounts → Autofill service** (wording varies by OEM; sometimes **Languages & input → Autofill**).
+3. Choose **Lados**.
+4. Open Lados and **unlock** your vault (credentials stay in RAM for the session; locking clears them).
+
+### How it works
+
+- While the vault is **unlocked**, the UI publishes entries to an in-memory cache the autofill service reads.
+- Tap a username/password field in Chrome or another app → pick a Lados dataset.
+- If the vault is **locked**, Android offers **Unlock Lados…**; unlock, then focus the field again.
+
+Save-password from the OS (“remember this login?”) is not implemented yet.
+
 ## Product notes
 
 - Mobile and desktop vaults may diverge on purpose.

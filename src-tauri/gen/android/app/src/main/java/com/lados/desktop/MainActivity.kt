@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.lados.desktop.autofill.AutofillJsBridge
 
 class MainActivity : TauriActivity() {
   private var promptedStorageThisSession = false
@@ -42,6 +43,8 @@ class MainActivity : TauriActivity() {
     webView.isVerticalScrollBarEnabled = false
     webView.isHorizontalScrollBarEnabled = false
     webView.setBackgroundColor(Color.parseColor("#111418"))
+    // Bridge for publishing unlocked credentials to AutofillVaultCache (never to disk).
+    webView.addJavascriptInterface(AutofillJsBridge(), "LadosAutofill")
   }
 
   /**

@@ -373,6 +373,45 @@ pub fn forget_recent_vault(state: State<'_, AppState>, path: String) -> Result<A
     Ok(state.status())
 }
 
+/// Removes a vault from the list. On mobile this also deletes the `.lados` file from
+/// `Documents/Lados` (only paths under that folder are accepted). On desktop it only
+/// forgets the recent entry — the file on disk is left alone.
+#[tauri::command(async)]
+pub fn remove_listed_vault(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<AppStatus> {
+    let path = PathBuf::from(path);
+    #[cfg(mobile)]
+    {
+        let vaults_dir = vaults_directory(&app)?;
+        if !path_is_inside_dir(&path, &vaults_dir) {
+            return Err(Error::invalid(
+                "Only vaults stored in Documents › Lados can be deleted from this list",
+            ));
+        }
+        if path.is_file() {
+            std::fs::remove_file(&path).map_err(|error| Error::System(error.to_string()))?;
+        }
+    }
+    #[cfg(desktop)]
+    let _ = &app;
+    state.update_settings(|settings| settings.forget_vault(&path))?;
+    Ok(state.status())
+}
+
+#[cfg(mobile)]
+fn path_is_inside_dir(path: &Path, dir: &Path) -> bool {
+    let canonical_dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    if let Ok(canonical_path) = std::fs::canonicalize(path) {
+        return canonical_path.starts_with(&canonical_dir);
+    }
+    path.parent()
+        .map(|parent| {
+            std::fs::canonicalize(parent)
+                .map(|parent| parent == canonical_dir)
+                .unwrap_or_else(|_| parent == dir)
+        })
+        .unwrap_or(false)
+}
+
 /// The interface reports keyboard and mouse activity, which postpones the automatic lock.
 #[tauri::command]
 pub fn touch(state: State<'_, AppState>) {
@@ -783,6 +822,39 @@ pub async fn pick_save_path(
 #[tauri::command]
 pub fn search_entries(state: State<'_, AppState>, query: String) -> Result<Vec<Uuid>> {
     state.with_vault(|open| Ok(open.vault().search(&query)))
+}
+
+/// Entries that match a page URL for autofill, ranked best-first. Requires an unlocked vault.
+#[tauri::command]
+pub fn find_entries_for_url(state: State<'_, AppState>, url: String) -> Result<Vec<views::UrlMatchHit>> {
+    state.with_vault(|open| {
+        let vault = open.vault();
+        Ok(vault
+            .entries_for_url(&url)
+            .into_iter()
+            .filter_map(|(id, kind)| vault.entry(id).ok().map(|entry| views::UrlMatchHit::new(entry, kind)))
+            .collect())
+    })
+}
+
+/// Full credentials for the Android autofill cache (unlocked session only; never written to disk).
+#[tauri::command]
+pub fn get_autofill_payload(state: State<'_, AppState>) -> Result<Vec<views::AutofillPayloadEntry>> {
+    state.touch();
+    state.with_vault(|open| {
+        Ok(open
+            .vault()
+            .entries
+            .iter()
+            .map(|entry| views::AutofillPayloadEntry {
+                id: entry.id,
+                title: entry.content.title.clone(),
+                username: entry.content.username.clone(),
+                password: entry.content.password.clone(),
+                url: entry.content.url.clone(),
+            })
+            .collect())
+    })
 }
 
 #[tauri::command]

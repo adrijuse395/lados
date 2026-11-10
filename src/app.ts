@@ -3,11 +3,13 @@
 import { renderUnlock } from "./screens/unlock";
 import { drawVault, isVaultMounted, renderVault, updateSelection } from "./screens/vault";
 import { renderWelcome } from "./screens/welcome";
+import { clearAutofillCache, syncAutofillCache } from "./services/autofill-bridge";
 import { BackendError, backend } from "./services/backend";
 import { resetVaultState, setVault, store } from "./state/store";
 import type { AppStatus, Theme } from "./types";
 import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
+import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
 
 function root(): HTMLElement {
   const element = document.getElementById("app");
@@ -48,9 +50,12 @@ export async function showStatus(status: AppStatus): Promise<void> {
     } else {
       renderVault(root());
     }
+    void syncAutofillCache();
+    void maybeShowExtensionInstall();
     return;
   }
 
+  clearAutofillCache();
   closeMenu();
   closeAllModals();
   resetVaultState();
@@ -80,6 +85,7 @@ export async function reloadVault(): Promise<void> {
     throw error;
   }
   redraw();
+  void syncAutofillCache();
 }
 
 /** Redraws the vault screen from the data already loaded. */

@@ -16,6 +16,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.7", features = [] }
 
+[features]
+# Enabled by `tauri build` for production: embeds the frontend instead of using
+# the dev server. A plain `cargo build --release` must pass it explicitly, or the
+# app will try to reach the Vite dev URL at runtime.
+custom-protocol = ["tauri/custom-protocol"]
+
 [dependencies]
 # Shared shell (tray-icon is desktop-only; see target-specific deps below)
 tauri = { version = "2.12", features = [] }
@@ -75,3 +81,7 @@ strip = "debuginfo"
 tauri = { version = "2.12", features = ["tray-icon"] }
 tauri-plugin-updater = "2.14"
 tauri-plugin-process = "2.4"
+# Browser-extension integration: the `lados://` scheme launches/focusses the app,
+# and a second launch is forwarded to the running instance instead of opening twice.
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = "2"

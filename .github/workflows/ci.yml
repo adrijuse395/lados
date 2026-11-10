@@ -57,3 +57,19 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+  extension:
+    name: Extension
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Uses the same addons-linter engine as addons.mozilla.org, so AMO
+      # rejections (innerHTML, missing data_collection_permissions, icon sizes…)
+      # are caught here instead of at upload time.
+      - name: Lint the Firefox extension
+        run: npx --yes web-ext lint --source-dir browser-extension

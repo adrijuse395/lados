@@ -13,6 +13,13 @@ src-tauri/target/
 Thumbs.db
 Desktop.ini
 
+# Tooling scratch
+.playwright-mcp/
+
+# Browser-extension build artifacts (regenerated before uploading to AMO)
+lados-firefox-*.zip
+lados-firefox-*.xpi
+
 # Editor / IDE
 .idea/
 .vscode/

@@ -15,6 +15,7 @@ import type {
   Preferences,
   RecentVault,
   RevisionSummary,
+  UrlMatchHit,
   Uuid,
   VaultView,
 } from "../types";
@@ -54,6 +55,7 @@ export const backend = {
   getStatus: () => call<AppStatus>("get_status"),
   updatePreferences: (preferences: Preferences) => call<AppStatus>("update_preferences", { preferences }),
   forgetRecentVault: (path: string) => call<AppStatus>("forget_recent_vault", { path }),
+  removeListedVault: (path: string) => call<AppStatus>("remove_listed_vault", { path }),
   touch: () => call<void>("touch"),
   quit: () => call<void>("quit_app"),
 
@@ -80,6 +82,11 @@ export const backend = {
 
   // Entries
   searchEntries: (query: string) => call<Uuid[]>("search_entries", { query }),
+  findEntriesForUrl: (url: string) => call<UrlMatchHit[]>("find_entries_for_url", { url }),
+  getAutofillPayload: () =>
+    call<Array<{ id: Uuid; title: string; username: string; password: string; url: string | null }>>(
+      "get_autofill_payload",
+    ),
   getEntry: (id: Uuid) => call<EntryDetails>("get_entry", { id }),
   getEntryForEdit: (id: Uuid) => call<EntryContent>("get_entry_for_edit", { id }),
   createEntry: (folderId: Uuid | null, content: EntryContent) => call<Uuid>("create_entry", { folderId, content }),

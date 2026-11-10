@@ -90,6 +90,18 @@ export async function openSettings(): Promise<void> {
       h(
         "section",
         { class: "settings-section" },
+        h("h3", { text: "Browser fill (desktop)" }),
+        h(
+          "p",
+          {
+            class: "muted",
+            text: "The sideload extension talks to Lados at http://127.0.0.1:18765 while this app is running. Use a build that includes the bridge (npm run tauri dev / a fresh local build) — the older GitHub 0.1.3 installer does not.",
+          },
+        ),
+      ),
+      h(
+        "section",
+        { class: "settings-section" },
         h("h3", { text: "Updates" }),
         h(
           "p",

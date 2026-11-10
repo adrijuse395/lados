@@ -191,6 +191,44 @@ pub fn host_of(url: &str) -> Option<String> {
     (!host.is_empty()).then(|| host.to_lowercase())
 }
 
+/// Host used for autofill matching: lowercased, without a leading `www.`.
+pub fn site_host(url: &str) -> Option<String> {
+    host_of(url).map(|host| {
+        host.strip_prefix("www.")
+            .unwrap_or(host.as_str())
+            .to_string()
+    })
+}
+
+/// How well an entry URL matches a page URL (higher is better).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum UrlMatchKind {
+    /// Page host is a subdomain of the entry host (`mail.example.com` ← `example.com`).
+    ParentHost = 1,
+    /// Same site host after normalizing `www.`.
+    ExactHost = 2,
+}
+
+/// `true` when `host` is a subdomain of `parent` (not equal).
+fn host_is_under(host: &str, parent: &str) -> bool {
+    host.len() > parent.len()
+        && host.as_bytes().get(host.len() - parent.len() - 1) == Some(&b'.')
+        && host.ends_with(parent)
+}
+
+/// Rank of `entry_url` against a page/address the user is visiting.
+pub fn url_match_kind(page_url: &str, entry_url: &str) -> Option<UrlMatchKind> {
+    let page = site_host(page_url)?;
+    let entry = site_host(entry_url)?;
+    if page == entry {
+        Some(UrlMatchKind::ExactHost)
+    } else if host_is_under(&page, &entry) {
+        Some(UrlMatchKind::ParentHost)
+    } else {
+        None
+    }
+}
+
 impl EntryContent {
     /// Trims what should never carry surrounding spaces and rejects incomplete data.
     /// The password is kept exactly as typed: spaces can be part of it.
@@ -572,6 +610,25 @@ impl Vault {
             .collect()
     }
 
+    /// Entries whose URL matches `page_url`, best matches first (exact host, then parent host).
+    pub fn entries_for_url(&self, page_url: &str) -> Vec<(Uuid, UrlMatchKind)> {
+        let mut hits: Vec<(Uuid, UrlMatchKind)> = self
+            .entries
+            .iter()
+            .filter_map(|entry| {
+                let url = entry.content.url.as_deref()?;
+                let kind = url_match_kind(page_url, url)?;
+                Some((entry.id, kind))
+            })
+            .collect();
+        hits.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| {
+            let title_a = self.entry(a.0).map(|e| e.content.title.as_str()).unwrap_or("");
+            let title_b = self.entry(b.0).map(|e| e.content.title.as_str()).unwrap_or("");
+            title_a.cmp(title_b)
+        }));
+        hits
+    }
+
     // ----- Icons -----
 
     /// Stores an image inside the vault. Adding the same image twice reuses the first copy.
@@ -701,6 +758,49 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(vault.folders.len(), 2);
         assert_eq!(vault.folder_path(first), path);
+    }
+
+    #[test]
+    fn url_matching_prefers_exact_host_over_parent() {
+        assert_eq!(
+            url_match_kind("https://www.example.com/login", "https://example.com/"),
+            Some(UrlMatchKind::ExactHost)
+        );
+        assert_eq!(
+            url_match_kind("https://mail.example.com/inbox", "https://example.com"),
+            Some(UrlMatchKind::ParentHost)
+        );
+        assert_eq!(
+            url_match_kind("https://evil.com", "https://example.com"),
+            None
+        );
+        assert_eq!(
+            url_match_kind("https://notexample.com", "https://example.com"),
+            None
+        );
+    }
+
+    #[test]
+    fn entries_for_url_ranks_exact_before_parent() {
+        let mut vault = Vault::new("Test").unwrap();
+        let mut parent = content("Parent");
+        parent.url = Some("https://example.com".into());
+        let parent_id = vault.add_entry(None, parent).unwrap();
+        let mut exact = content("Exact");
+        exact.url = Some("https://mail.example.com".into());
+        let exact_id = vault.add_entry(None, exact).unwrap();
+        vault
+            .add_entry(None, {
+                let mut other = content("Other");
+                other.url = Some("https://other.test".into());
+                other
+            })
+            .unwrap();
+
+        let hits = vault.entries_for_url("https://mail.example.com/login");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0], (exact_id, UrlMatchKind::ExactHost));
+        assert_eq!(hits[1], (parent_id, UrlMatchKind::ParentHost));
     }
 
     #[test]

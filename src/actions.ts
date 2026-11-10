@@ -10,6 +10,7 @@ import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
+import { openUrlMatchTester } from "./dialogs/url-match";
 import { backend, isCredentialError } from "./services/backend";
 import {
   currentFolderId,
@@ -292,6 +293,7 @@ export function selectView(view: typeof store.view): void {
 
 export const showGenerator = () => attempt(() => openGenerator());
 export const showSettings = () => attempt(() => openSettings());
+export const showUrlMatchTester = () => attempt(() => openUrlMatchTester());
 
 // ----- Import, export and merge -----
 

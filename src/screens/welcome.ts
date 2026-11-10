@@ -6,9 +6,10 @@ import { pickVaultToOpen } from "../dialogs/open-vault";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
 import type { RecentVault } from "../types";
-import { iconButton } from "../ui/controls";
+import { fileNameOf, iconButton } from "../ui/controls";
 import { h, mount } from "../ui/dom";
 import { logo, svgIcon } from "../ui/icons";
+import { confirmDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 
 async function selectVault(path: string): Promise<void> {
@@ -45,15 +46,27 @@ async function createVault(): Promise<void> {
   }
 }
 
-async function forget(path: string): Promise<void> {
+async function removeListedVault(path: string, mobile: boolean): Promise<void> {
   try {
-    await showStatus(await backend.forgetRecentVault(path));
+    if (mobile) {
+      const name = fileNameOf(path);
+      const confirmed = await confirmDialog({
+        title: "Delete vault?",
+        message: `This permanently deletes “${name}” from Documents › Lados on this phone. It cannot be undone.`,
+        confirmLabel: "Delete vault",
+        danger: true,
+      });
+      if (!confirmed) return;
+    }
+    await showStatus(await backend.removeListedVault(path));
+    if (mobile) toast("Vault deleted");
   } catch (error) {
     toastError(error);
   }
 }
 
-function recentItem(vault: RecentVault, showForget: boolean): HTMLElement {
+function recentItem(vault: RecentVault, mobile: boolean): HTMLElement {
+  const removeLabel = mobile ? "Delete vault from this phone" : "Remove from this list";
   return h(
     "li",
     { class: ["recent-item", !vault.exists && "missing"] },
@@ -77,7 +90,7 @@ function recentItem(vault: RecentVault, showForget: boolean): HTMLElement {
         }),
       ),
     ),
-    showForget ? iconButton("close", "Remove from this list", () => void forget(vault.path), "recent-forget") : null,
+    iconButton("close", removeLabel, () => void removeListedVault(vault.path, mobile), "recent-forget"),
   );
 }
 
@@ -157,7 +170,7 @@ export function renderWelcome(container: HTMLElement): void {
               h(
                 "ul",
                 { class: "recent-list" },
-                listed.map((vault) => recentItem(vault, !mobile || recent.some((item) => item.path === vault.path))),
+                listed.map((vault) => recentItem(vault, mobile)),
               ),
             )
           : null,

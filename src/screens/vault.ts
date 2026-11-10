@@ -43,6 +43,7 @@ function openMoreMenu(anchor: HTMLElement): void {
     { label: "Rename vault…", icon: "edit", onSelect: () => void actions.renameVault() },
     { label: "Change master key…", icon: "key", onSelect: () => void actions.changeMasterKey() },
     { label: "Settings…", icon: "settings", onSelect: () => void actions.showSettings() },
+    { label: "Find for URL…", icon: "search", onSelect: () => void actions.showUrlMatchTester() },
     { label: "Keyboard shortcuts", icon: "info", onSelect: () => void actions.showShortcuts() },
     "separator",
     { label: "Close vault", icon: "signOut", onSelect: () => void actions.closeVault() },

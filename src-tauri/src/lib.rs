@@ -7,6 +7,8 @@
 //! - The bridge to the interface: `commands` (the only module the interface talks to) and
 //!   `views` (the shapes of the data it receives).
 
+#[cfg(desktop)]
+mod autofill_http;
 mod background;
 mod clipboard;
 mod commands;
@@ -44,7 +46,23 @@ fn vault_from_arguments() -> Option<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Single-instance runs first: a second launch (for example from the browser
+    // extension's `lados://` link) is forwarded to the running window instead of
+    // opening a duplicate. The deep-link plugin receives that scheme.
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init());
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -52,6 +70,10 @@ pub fn run() {
         .setup(|app| {
             #[cfg(desktop)]
             {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                // In development the `lados://` scheme is not installed system-wide
+                // yet; register it so the browser extension's link works under `tauri dev`.
+                let _ = app.deep_link().register_all();
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.handle().plugin(tauri_plugin_process::init())?;
@@ -61,6 +83,8 @@ pub fn run() {
             #[cfg(desktop)]
             tray::create(app.handle())?;
             background::start(app.handle().clone());
+            #[cfg(desktop)]
+            autofill_http::start(app.handle().clone());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -80,6 +104,7 @@ pub fn run() {
             commands::get_status,
             commands::update_preferences,
             commands::forget_recent_vault,
+            commands::remove_listed_vault,
             commands::touch,
             commands::quit_app,
             commands::select_vault,
@@ -97,6 +122,8 @@ pub fn run() {
             commands::suggested_vault_path,
             commands::list_device_vaults,
             commands::search_entries,
+            commands::find_entries_for_url,
+            commands::get_autofill_payload,
             commands::get_entry,
             commands::get_entry_for_edit,
             commands::create_entry,
