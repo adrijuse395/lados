@@ -423,6 +423,90 @@ pub fn quit_app(app: AppHandle) {
     quit_now(&app);
 }
 
+// ----- Cloud sync (optional) -----
+
+/// The sync account bound to the current vault, or null.
+#[tauri::command]
+pub fn sync_status(state: State<'_, AppState>) -> Option<views::SyncView> {
+    state.status().sync
+}
+
+/// Sets up (or signs in to) a sync account for the open vault, using the same master
+/// credentials, and binds this vault to a server vault.
+#[tauri::command]
+pub async fn sync_setup(app: AppHandle, email: String) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let email = email.trim().to_lowercase();
+            if !email.contains('@') {
+                return Err(Error::invalid("Enter a valid email address"));
+            }
+            let (composite, vault_name) =
+                state.with_vault(|open| Ok((open.composite(), open.vault().name.clone())))?;
+            let auth = crate::sync::auth_secret(&composite);
+            let base = crate::sync::DEFAULT_SERVER.to_string();
+
+            let token = match crate::sync::login(&base, &email, &auth) {
+                Ok(token) => token,
+                Err(Error::InvalidCredentials) => crate::sync::register(&base, &email, &auth)?,
+                Err(error) => return Err(error),
+            };
+            let vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+
+            state.update_settings(|settings| {
+                settings.sync = Some(crate::settings::SyncConfig {
+                    server_url: base,
+                    email,
+                    token,
+                    vault_id,
+                    last_version: None,
+                });
+            })?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, email);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Runs one synchronization pass for the open vault and reports what the merge changed.
+#[tauri::command]
+pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let config = state
+                .settings()
+                .sync
+                .clone()
+                .ok_or_else(|| Error::invalid("Sync is not set up"))?;
+            let remote = crate::sync::HttpRemote::new(&config.server_url, &config.token);
+            let outcome = state.with_vault_mut(|open| open.sync_remote(&remote, &config.vault_id))?;
+            Ok(outcome.report)
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Forgets the sync account on this device (the server copy is left untouched).
+#[tauri::command(async)]
+pub fn sync_forget(state: State<'_, AppState>) -> Result<AppStatus> {
+    state.update_settings(|settings| settings.sync = None)?;
+    Ok(state.status())
+}
+
 // ----- Vault session -----
 
 #[tauri::command]

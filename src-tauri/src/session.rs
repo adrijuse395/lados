@@ -250,6 +250,23 @@ impl OpenVault {
         })
     }
 
+    /// Folds the remote copy into this vault (via the sync engine) and, if the local
+    /// vault changed, saves it to disk. The encryption key here never leaves the device.
+    #[cfg(feature = "sync")]
+    pub fn sync_remote(
+        &mut self,
+        remote: &dyn crate::sync::Remote,
+        vault_id: &str,
+    ) -> Result<crate::sync::SyncOutcome> {
+        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &self.file.key)?;
+        if outcome.changed_locally {
+            let mut draft = Zeroizing::new(outcome.vault.clone());
+            self.file.save(&mut draft, None)?;
+            std::mem::swap(&mut self.vault, &mut *draft);
+        }
+        Ok(outcome)
+    }
+
     /// Picks up changes saved by other windows. Called periodically.
     pub fn sync(&mut self) -> Result<SyncOutcome> {
         match self.file.check_disk(true)? {

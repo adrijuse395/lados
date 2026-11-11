@@ -12,7 +12,7 @@ use crate::clipboard::ClipboardState;
 use crate::error::{Error, Result};
 use crate::session::OpenVault;
 use crate::settings::Settings;
-use crate::views::{AppStatus, RecentVaultView, SessionState, file_name, path_text};
+use crate::views::{AppStatus, RecentVaultView, SessionState, SyncView, file_name, path_text};
 
 pub enum Session {
     Closed,
@@ -139,6 +139,11 @@ impl AppState {
             preferences: settings.preferences.clone(),
             recent_vaults: settings.recent_vaults.iter().map(RecentVaultView::from).collect(),
             app_version: env!("CARGO_PKG_VERSION"),
+            sync: settings.sync.as_ref().map(|sync| SyncView {
+                server_url: sync.server_url.clone(),
+                email: sync.email.clone(),
+                vault_id: sync.vault_id.clone(),
+            }),
         }
     }
 

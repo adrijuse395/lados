@@ -34,6 +34,16 @@ pub struct AppStatus {
     pub preferences: Preferences,
     pub recent_vaults: Vec<RecentVaultView>,
     pub app_version: &'static str,
+    /// Cloud sync account, when the user has set one up. Never includes the token.
+    pub sync: Option<SyncView>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncView {
+    pub server_url: String,
+    pub email: String,
+    pub vault_id: String,
 }
 
 #[derive(Debug, Serialize)]

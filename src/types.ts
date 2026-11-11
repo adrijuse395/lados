@@ -66,6 +66,15 @@ export interface AppStatus {
   preferences: Preferences;
   recentVaults: RecentVault[];
   appVersion: string;
+  /** Cloud sync account, when set up. */
+  sync: SyncView | null;
+}
+
+/** Cloud sync account bound to the current vault (never the token). */
+export interface SyncView {
+  serverUrl: string;
+  email: string;
+  vaultId: string;
 }
 
 export type Icon = { kind: "builtin"; value: string } | { kind: "custom"; value: Uuid };

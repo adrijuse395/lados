@@ -1,4 +1,4 @@
-import { applyTheme } from "../app";
+import { applyTheme, reloadVault } from "../app";
 import { extensionInstallDialog } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
@@ -6,8 +6,8 @@ import { preferences, store } from "../state/store";
 import type { Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
-import { showDialog } from "../ui/modal";
-import { toastError } from "../ui/toast";
+import { promptDialog, showDialog } from "../ui/modal";
+import { toast, toastError } from "../ui/toast";
 
 const AUTO_LOCK_CHOICES = [0, 1, 2, 5, 10, 15, 30, 60, 120, 240];
 const CLIPBOARD_CHOICES = [0, 10, 20, 30, 45, 60, 90, 120];
@@ -82,6 +82,63 @@ export async function openSettings(): Promise<void> {
     "Opens in the background so browser autofill is ready without launching it first.",
   );
 
+  // ----- Cloud sync -----
+  const syncContainer = h("div", { class: "stack", style: "gap: 10px" });
+
+  const renderSync = () => {
+    const sync = store.status?.sync ?? null;
+    if (sync) {
+      syncContainer.replaceChildren(
+        h("p", { class: "muted", text: `Signed in as ${sync.email}. Your devices using this account stay in sync.` }),
+        h(
+          "div",
+          { class: "browser-choices" },
+          h("button", { type: "button", class: "button primary", onClick: () => void runSync() }, "Sync now"),
+          h("button", { type: "button", class: "button", onClick: () => void forgetSync() }, "Turn off sync"),
+        ),
+      );
+    } else {
+      syncContainer.replaceChildren(
+        h("p", { class: "muted", text: "Keep this vault in sync across your devices. It uses the same master password." }),
+        h("button", { type: "button", class: "button", onClick: () => void setupSync() }, "Set up sync"),
+      );
+    }
+  };
+
+  const setupSync = async () => {
+    const email = await promptDialog({ title: "Set up cloud sync", label: "Account email", submitLabel: "Continue" });
+    if (email === null) return;
+    try {
+      store.status = await backend.syncSetup(email);
+      renderSync();
+      toast("Cloud sync is ready", "success");
+    } catch (error) {
+      toastError(error);
+    }
+  };
+
+  const runSync = async () => {
+    try {
+      await backend.syncNow();
+      await reloadVault();
+      toast("Synced", "success");
+    } catch (error) {
+      toastError(error);
+    }
+  };
+
+  const forgetSync = async () => {
+    try {
+      store.status = await backend.syncForget();
+      renderSync();
+      toast("Cloud sync turned off on this device");
+    } catch (error) {
+      toastError(error);
+    }
+  };
+
+  renderSync();
+
   await showDialog<true>({
     title: "Settings",
     size: "medium",
@@ -115,6 +172,9 @@ export async function openSettings(): Promise<void> {
               "Install the browser extension",
             ),
           ),
+      mobile
+        ? null
+        : h("section", { class: "settings-section" }, h("h3", { text: "Cloud sync (desktop)" }), syncContainer),
       h(
         "section",
         { class: "settings-section" },

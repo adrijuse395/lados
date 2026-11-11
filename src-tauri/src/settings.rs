@@ -76,10 +76,26 @@ pub struct RecentVault {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+pub struct SyncConfig {
+    /// Base URL of the sync server (self-hosters may point elsewhere).
+    pub server_url: String,
+    pub email: String,
+    /// Bearer token for the sync account. Kept local; never written to the vault.
+    pub token: String,
+    /// The vault this device is bound to on the server.
+    pub vault_id: String,
+    /// Last remote version this device saw.
+    pub last_version: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub preferences: Preferences,
     /// Most recent first.
     pub recent_vaults: Vec<RecentVault>,
+    /// Present only once the user sets up cloud sync.
+    pub sync: Option<SyncConfig>,
 }
 
 impl Settings {

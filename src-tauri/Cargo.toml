@@ -23,7 +23,7 @@ tauri-build = { version = "2.7", features = [] }
 custom-protocol = ["tauri/custom-protocol"]
 # Optional cloud synchronization (see docs/SYNC.md). Off by default so normal builds
 # are unchanged while the feature is developed.
-sync = []
+sync = ["dep:reqwest"]
 
 [dependencies]
 # Shared shell (tray-icon is desktop-only; see target-specific deps below)
@@ -51,6 +51,9 @@ zeroize = { version = "1.9", features = ["derive"] }
 csv = "1.4"
 keepass = { version = "0.15", features = ["save_kdbx4"] }
 base64 = "0.23"
+
+# Optional sync client (only compiled with the `sync` feature).
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["blocking", "json", "rustls"] }
 
 [dev-dependencies]
 tempfile = "3"
