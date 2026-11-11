@@ -60,7 +60,11 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
-        .plugin(tauri_plugin_deep_link::init());
+        .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ));
 
     builder
         .plugin(tauri_plugin_dialog::init())
@@ -138,6 +142,8 @@ pub fn run() {
             commands::copy_revision_password,
             commands::open_entry_url,
             commands::open_external_url,
+            commands::get_autostart,
+            commands::set_autostart,
             commands::create_folder,
             commands::update_folder,
             commands::move_folder,

@@ -85,3 +85,4 @@ tauri-plugin-process = "2.4"
 # and a second launch is forwarded to the running instance instead of opening twice.
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"

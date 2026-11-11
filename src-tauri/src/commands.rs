@@ -1000,6 +1000,40 @@ pub fn open_external_url(app: AppHandle, url: String) -> Result<()> {
         .map_err(|error| Error::System(error.to_string()))
 }
 
+/// Whether Lados is set to start when the user signs in (desktop only).
+#[tauri::command]
+pub fn get_autostart(app: AppHandle) -> Result<bool> {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        app.autolaunch()
+            .is_enabled()
+            .map_err(|error| Error::System(error.to_string()))
+    }
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
+/// Enables or disables starting Lados at login (desktop only).
+#[tauri::command]
+pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<()> {
+    #[cfg(desktop)]
+    {
+        use tauri_plugin_autostart::ManagerExt;
+        let manager = app.autolaunch();
+        let result = if enabled { manager.enable() } else { manager.disable() };
+        result.map_err(|error| Error::System(error.to_string()))
+    }
+    #[cfg(mobile)]
+    {
+        let _ = (app, enabled);
+        Err(Error::invalid("Starting at login is only available on the desktop app"))
+    }
+}
+
 // ----- Folders and icons -----
 #[tauri::command(async)]
 pub fn create_folder(

@@ -39,6 +39,7 @@ export async function openSettings(): Promise<void> {
   };
   const current = preferences();
   const mobile = await backend.isMobileShell().catch(() => false);
+  const autostart = mobile ? false : await backend.getAutostart().catch(() => false);
 
   const theme = segmented<Theme>(
     [
@@ -72,6 +73,15 @@ export async function openSettings(): Promise<void> {
     "Closing the window hides it; the vault keeps locking itself as usual.",
   );
 
+  const startup = toggleSwitch(
+    "Start Lados when you sign in",
+    autostart,
+    (checked) => {
+      void backend.setAutostart(checked).catch(toastError);
+    },
+    "Opens in the background so browser autofill is ready without launching it first.",
+  );
+
   await showDialog<true>({
     title: "Settings",
     size: "medium",
@@ -88,7 +98,7 @@ export async function openSettings(): Promise<void> {
           hint: "Copied passwords are also kept out of the Windows clipboard history.",
         }),
       ),
-      h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray),
+      h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray, mobile ? null : startup),
       mobile
         ? null
         : h(
