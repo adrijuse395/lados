@@ -28,30 +28,48 @@ login page ── content.js (Shadow-DOM widget)
 
 | File | Role |
 | ---- | ---- |
-| `manifest.json` | MV2 (Firefox). Minimal permissions: only `http://127.0.0.1:18765/*`. |
-| `background.js` | Privileged bridge client (status + entry lookup, with a timeout). |
+| `manifest.json` | Firefox (MV2). Minimal permissions: only `http://127.0.0.1:18765/*`. |
+| `manifest.chrome.json` | Chrome/Edge (MV3, `service_worker`). Same code, Chromium-shaped manifest. |
+| `background.js` | Privileged bridge client (status + entry lookup + on-demand reveal, with a timeout). |
 | `content.js` | Detects login forms, draws the in-page widget (Shadow DOM), fills inputs. |
 | `popup.html` / `popup.js` | Toolbar popup: connection state + "Open Lados". |
-| `icons/` | 16 / 48 / 128 px icons. |
+| `icons/` | 16 / 32 / 48 / 128 px icons. |
+
+The per-store packaging script lives at `scripts/build-extension.py`.
+
+## Build the store packages
+
+```bash
+python3 scripts/build-extension.py
+```
+
+Produces (under `browser-extension/build/`, git-ignored):
+
+- `firefox/` and `lados-firefox.zip` — for addons.mozilla.org
+- `chrome/` and `lados-chrome.zip` — for the Chrome Web Store / Edge
 
 ## Load it (development)
 
-1. Firefox → `about:debugging` → **This Firefox** → **Load Temporary Add-on…**
-2. Select `browser-extension/manifest.json`.
-3. Run Lados and unlock your vault.
+**Firefox:** `about:debugging` → **This Firefox** → **Load Temporary Add-on…** → pick `manifest.json`.
 
-Reload the add-on after editing any file (Firefox does not hot-reload).
+**Chrome / Edge:** `chrome://extensions` (or `edge://extensions`) → **Developer mode** → **Load unpacked** → pick the generated `browser-extension/build/chrome` folder. Reload the add-on after editing any file.
 
-## Publishing (Firefox Add-ons — free)
+## Publishing
 
-1. Bump `version` in `manifest.json`.
-2. Zip the **contents** of this folder (not the folder itself):
-   `cd browser-extension && zip -r ../lados-firefox.zip .`
-3. Upload at <https://addons.mozilla.org/en-US/developers/>.
-4. After approval, set the resulting URL in
-   `src/dialogs/browser-extension.ts` (`AMO_URL`).
+**Firefox Add-ons (AMO)** — free:
+1. Bump `version`, run `python3 scripts/build-extension.py`.
+2. Upload `build/lados-firefox.zip` at <https://addons.mozilla.org/en-US/developers/>.
+3. Distribution: **On this site**.
+
+**Chrome Web Store** — one-time $5 developer fee:
+1. Upload `build/lados-chrome.zip` at <https://chrome.google.com/webstore/devconsole>.
+2. Fill the listing (Privacy: no data collected).
+
+**Edge Add-ons** — free, same `lados-chrome.zip`: <https://partner.microsoft.com/dashboard/microsoftedge>
+
+After approval, set the resulting URLs in `src/dialogs/browser-extension.ts`.
 
 ## Notes
 
-- Firefox requires the fixed `browser_specific_settings.gecko.id` in the manifest.
-- Chromium will need an MV3 build (separate manifest with `background.service_worker`).
+- Firefox requires the fixed `browser_specific_settings.gecko.id`; Chromium needs `manifest_version: 3` with `background.service_worker`.
+- The extension only talks to `http://127.0.0.1:18765` (loopback). It sets no CORS header, so web pages cannot read its responses.

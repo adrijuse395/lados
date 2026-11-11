@@ -19,6 +19,7 @@ Desktop.ini
 # Browser-extension build artifacts (regenerated before uploading to AMO)
 lados-firefox-*.zip
 lados-firefox-*.xpi
+browser-extension/build/
 
 # Editor / IDE
 .idea/
