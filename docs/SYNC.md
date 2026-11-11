@@ -59,8 +59,9 @@ From the user's master password (and optional key file — see §9) the client d
 | `encKey` | device only, never sent | Encrypts/decrypts the vault (as today) |
 | `authSecret` | exchanged during login only | Authenticates the account |
 
-- The server stores a **verifier** derived from `authSecret` (Argon2id with a
-  server-side salt). It never stores `authSecret` itself.
+- The server stores a **verifier**: `SHA-256(salt ‖ authSecret)` with a per-account
+  salt. No server-side KDF is needed because `authSecret` is already a high-entropy key
+  (the expensive Argon2 work ran on the client). The server never stores `authSecret`.
 - **v1 login:** TLS + verifier. **v1.1 (optional):** upgrade to OPAQUE (RFC 9807) so the
   server never sees anything password-equivalent.
 - The encryption key derivation stays exactly as it is today (Argon2id + per-file salt
