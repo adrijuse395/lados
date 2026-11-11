@@ -24,7 +24,7 @@ mod settings;
 mod state;
 mod storage;
 #[cfg(feature = "sync")]
-mod sync;
+pub mod sync;
 #[cfg(desktop)]
 mod tray;
 mod views;

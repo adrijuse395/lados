@@ -178,11 +178,11 @@ mod tests {
                 self.inner.get(id)
             }
             fn put(&self, id: &str, base: Option<u64>, bytes: &[u8]) -> Result<PutOutcome> {
-                if !self.injected.get() {
-                    if let Some(version) = base {
-                        self.injected.set(true);
-                        self.inner.put(id, Some(version), &self.other_bytes)?;
-                    }
+                if !self.injected.get()
+                    && let Some(version) = base
+                {
+                    self.injected.set(true);
+                    self.inner.put(id, Some(version), &self.other_bytes)?;
                 }
                 self.inner.put(id, base, bytes)
             }
