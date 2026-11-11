@@ -174,10 +174,50 @@ enable sync, and says so in the UI. (A later version may allow key files with an
 
 ## 12. Hosting and technology
 
-- **Cloudflare Workers** (TypeScript — it does no crypto, so it stays tiny) for the API.
-- **R2** for encrypted blobs (no egress fees), **D1** for accounts/versions.
-- Expected cost: near-zero initially; a few €/month at thousands of users.
-- Server does no cryptography beyond hashing the auth verifier.
+**Decision: Cloudflare Workers + R2 + D1.**
+
+| Piece | Role | Notes |
+| --- | --- | --- |
+| **Workers** | API: auth, vault metadata, entitlement, billing webhook | Serverless, global, zero ops. Free tier: 100k requests/day |
+| **R2** | Encrypted blobs (the `.lados` files) | **No egress fees.** Free tier: 10 GB storage |
+| **D1** | Accounts, plans, vault versions | SQLite. Free tier: 5 GB, 5M reads/day |
+
+- The API is written in **TypeScript**: it performs **no cryptography** (it stores
+  ciphertext and hashes the auth verifier), so it stays small and simple.
+  (Rust via `workers-rs` is possible but adds build complexity for no benefit here.)
+- **No servers to operate**: no OS patching, no load balancers, no disks.
+
+### Why not the alternatives
+
+- **Own Linux VPS** — single point of failure, manual ops and scaling. Still allowed as
+  *self-hosting* for users who accept the trade-off, but not our hosted plan.
+- **Supabase / Neon (Postgres)** — nice, but **egress is metered** and blobs-in-DB is a
+  poor fit for repeated downloads.
+- **Fly.io / Render** — better than a VPS, still "a server" to manage.
+- **AWS S3 + Lambda + DynamoDB** — S3 charges **egress**; more IAM complexity; no
+  permanent free tier.
+- **Vercel / Netlify functions** — fine for the API, but blob storage is paid and
+  egress-metered.
+
+### Cost model
+
+- **Personal / early use: €0.** The free tiers (100k req/day, 10 GB R2, 5 GB D1) cover a
+  single user and early adopters with large headroom (one vault ≈ 64–256 KB).
+- **Growth is funded by subscriptions.** At thousands of users the bill is roughly the
+  Workers paid plan (~$5/mo) plus a few GB of R2, so one **€12/year** subscription covers
+  infrastructure for many users.
+- **Scales automatically** — no capacity planning.
+
+### Concurrency
+
+Version increments use an atomic compare-and-set
+(`UPDATE ... WHERE id = ? AND version = ?`) whose affected-row count distinguishes success
+from a 409 conflict — no cross-request locks required.
+
+### Consistent with the design
+
+The server is a **dumb box**: it authenticates accounts and stores opaque blobs. All
+cryptography and all conflict resolution happen on the user's devices (§7).
 
 ## 13. Self-hosting
 
