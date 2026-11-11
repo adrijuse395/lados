@@ -90,6 +90,7 @@ impl Header {
 }
 
 /// The derived encryption key plus the parameters needed to write a matching header.
+#[derive(Clone)]
 pub struct VaultKey {
     pub kdf: KdfParams,
     pub salt: [u8; SALT_LEN],

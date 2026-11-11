@@ -1,16 +1,20 @@
 //! One synchronization pass: fold the remote copy into the local vault, then upload
 //! the result. Every merge happens here, on the device; the server never sees plaintext
 //! and never resolves conflicts (see `docs/SYNC.md` §7).
+//!
+//! The encryption key is derived from the **header stored in the encrypted blob**, so a
+//! brand-new device (empty vault under the same master password) can decrypt and adopt
+//! the vault's salt simply by syncing.
 
+use crate::crypto::SecretKey;
 use crate::error::{Error, Result};
 use crate::merge::{self, MergeReport};
 use crate::models::Vault;
-use crate::storage::{self, VaultKey};
+use crate::storage::{self, Header, VaultKey};
 
 use super::remote::{PutOutcome, Remote, RemoteVault};
 
 /// What one synchronization pass did.
-#[derive(Debug)]
 pub struct SyncOutcome {
     /// The vault after the merge; the caller should adopt this.
     pub vault: Vault,
@@ -20,6 +24,16 @@ pub struct SyncOutcome {
     pub uploaded: bool,
     /// What the merge brought in.
     pub report: MergeReport,
+    /// The key matching the remote header. The caller adopts it so the local file and
+    /// the server converge on one salt.
+    pub key: VaultKey,
+}
+
+/// Derives the vault key for a given encrypted blob, from its header and the master
+/// credentials. This is what lets any device open the synced vault.
+fn key_for(composite: &SecretKey, bytes: &[u8]) -> Result<VaultKey> {
+    let header = Header::parse(bytes)?;
+    VaultKey::for_header(composite, &header)
 }
 
 fn decrypt(key: &VaultKey, remote: &RemoteVault) -> Result<Vault> {
@@ -28,11 +42,16 @@ fn decrypt(key: &VaultKey, remote: &RemoteVault) -> Result<Vault> {
 
 /// Merges the remote copy into `local` and uploads the result.
 ///
-/// `key` is the vault's encryption key. It must match the remote's header (same
-/// credentials and salt), which holds for copies of the same vault. A conflict is
-/// resolved by merging the other copy and retrying once; a second conflict is
-/// reported so the caller can simply sync again.
-pub fn sync(remote: &dyn Remote, vault_id: &str, local: &Vault, key: &VaultKey) -> Result<SyncOutcome> {
+/// `composite` is the master credential, used to derive keys for whatever header the
+/// remote carries. `local_key` is this device's current key, used for the very first
+/// upload (its salt then becomes the vault's canonical salt).
+pub fn sync(
+    remote: &dyn Remote,
+    vault_id: &str,
+    local: &Vault,
+    composite: &SecretKey,
+    local_key: &VaultKey,
+) -> Result<SyncOutcome> {
     let remote_now = remote.get(vault_id)?;
 
     let mut merged = local.clone();
@@ -40,9 +59,11 @@ pub fn sync(remote: &dyn Remote, vault_id: &str, local: &Vault, key: &VaultKey) 
     let mut changed_locally = false;
     let mut base: Option<u64> = None;
     let mut needs_upload = remote_now.is_none();
+    let mut key = local_key.clone();
 
     if let Some(remote_vault) = &remote_now {
-        let remote_plain = decrypt(key, remote_vault)?;
+        key = key_for(composite, &remote_vault.bytes)?;
+        let remote_plain = decrypt(&key, remote_vault)?;
         let outcome = merge::merge(local, &remote_plain);
         merged = outcome.vault;
         report = outcome.report;
@@ -57,28 +78,33 @@ pub fn sync(remote: &dyn Remote, vault_id: &str, local: &Vault, key: &VaultKey) 
             changed_locally,
             uploaded: false,
             report,
+            key,
         });
     }
 
-    let bytes = storage::encrypt_vault(&merged, key)?;
+    let bytes = storage::encrypt_vault(&merged, &key)?;
     match remote.put(vault_id, base, &bytes)? {
         PutOutcome::Stored { .. } => Ok(SyncOutcome {
             vault: merged,
             changed_locally,
             uploaded: true,
             report,
+            key,
         }),
         PutOutcome::Conflict { current } => {
-            // Somebody wrote first: fold their copy in and retry once.
-            let remote_plain = decrypt(key, &current)?;
+            // Somebody wrote first: their copy may carry a different header, so derive
+            // its key, fold it in, and retry once.
+            let current_key = key_for(composite, &current.bytes)?;
+            let remote_plain = decrypt(&current_key, &current)?;
             let outcome = merge::merge(&merged, &remote_plain);
-            let bytes = storage::encrypt_vault(&outcome.vault, key)?;
+            let bytes = storage::encrypt_vault(&outcome.vault, &current_key)?;
             match remote.put(vault_id, Some(current.version), &bytes)? {
                 PutOutcome::Stored { .. } => Ok(SyncOutcome {
                     vault: outcome.vault,
                     changed_locally: changed_locally || outcome.local_changed,
                     uploaded: true,
                     report: outcome.report,
+                    key: current_key,
                 }),
                 PutOutcome::Conflict { .. } => Err(Error::invalid(
                     "The vault changed again while syncing; please retry",
@@ -96,8 +122,10 @@ mod tests {
 
     use super::super::remote::MemoryRemote;
 
-    fn key() -> VaultKey {
-        VaultKey::generate(&composite_key("pw", None), KdfParams::FOR_TESTS).unwrap()
+    fn credentials() -> (SecretKey, VaultKey) {
+        let composite = composite_key("pw", None);
+        let key = VaultKey::generate(&composite, KdfParams::FOR_TESTS).unwrap();
+        (composite, key)
     }
 
     fn content(title: &str, password: &str) -> EntryContent {
@@ -111,18 +139,17 @@ mod tests {
     #[test]
     fn uploads_the_first_copy_and_a_second_device_receives_it() {
         let remote = MemoryRemote::new();
-        let key = key();
+        let (composite, key) = credentials();
 
         let base = Vault::new("Main").unwrap();
         let mut first_device = base.clone();
         first_device.add_entry(None, content("Mail", "1")).unwrap();
 
-        let uploaded = sync(&remote, "v1", &first_device, &key).unwrap();
+        let uploaded = sync(&remote, "v1", &first_device, &composite, &key).unwrap();
         assert!(uploaded.uploaded);
 
         // A device that only had the (older, empty) copy learns about the entry.
-        let second_device = base;
-        let received = sync(&remote, "v1", &second_device, &key).unwrap();
+        let received = sync(&remote, "v1", &base, &composite, &key).unwrap();
         assert!(!received.uploaded, "nothing to write back");
         assert!(received.changed_locally);
         assert_eq!(received.vault.entries.len(), 1);
@@ -130,23 +157,41 @@ mod tests {
     }
 
     #[test]
+    fn a_brand_new_device_adopts_the_remote_salt() {
+        let remote = MemoryRemote::new();
+        let (composite, key_a) = credentials();
+
+        let base = Vault::new("Main").unwrap();
+        let mut device_a = base.clone();
+        device_a.add_entry(None, content("Mail", "1")).unwrap();
+        sync(&remote, "v1", &device_a, &composite, &key_a).unwrap();
+
+        // Device B has its own (different) salt but the same master password.
+        let key_b = VaultKey::generate(&composite, KdfParams::FOR_TESTS).unwrap();
+        assert_ne!(key_a.salt, key_b.salt);
+
+        let received = sync(&remote, "v1", &base, &composite, &key_b).unwrap();
+        assert_eq!(received.vault.entries.len(), 1, "it could decrypt the remote copy");
+        assert_eq!(received.key.salt, key_a.salt, "and adopted the vault's salt");
+    }
+
+    #[test]
     fn edits_made_on_two_devices_are_both_kept() {
         let remote = MemoryRemote::new();
-        let key = key();
+        let (composite, key) = credentials();
         let base = Vault::new("Main").unwrap();
 
         let mut device_a = base.clone();
         device_a.add_entry(None, content("A", "1")).unwrap();
-        let a = sync(&remote, "v1", &device_a, &key).unwrap().vault;
+        let a = sync(&remote, "v1", &device_a, &composite, &key).unwrap().vault;
 
         let mut device_b = base.clone();
         device_b.add_entry(None, content("B", "2")).unwrap();
-        let b = sync(&remote, "v1", &device_b, &key).unwrap();
+        let b = sync(&remote, "v1", &device_b, &composite, &key).unwrap();
         assert_eq!(b.vault.entries.len(), 2);
         assert!(b.uploaded);
 
-        // Device A syncs again and now sees both entries.
-        let a2 = sync(&remote, "v1", &a, &key).unwrap();
+        let a2 = sync(&remote, "v1", &a, &composite, &key).unwrap();
         assert_eq!(a2.vault.entries.len(), 2);
         assert!(a2.changed_locally);
     }
@@ -154,20 +199,17 @@ mod tests {
     #[test]
     fn nothing_changed_means_nothing_is_uploaded() {
         let remote = MemoryRemote::new();
-        let key = key();
+        let (composite, key) = credentials();
         let vault = Vault::new("Main").unwrap();
 
-        sync(&remote, "v1", &vault, &key).unwrap();
-        let again = sync(&remote, "v1", &vault, &key).unwrap();
+        sync(&remote, "v1", &vault, &composite, &key).unwrap();
+        let again = sync(&remote, "v1", &vault, &composite, &key).unwrap();
         assert!(!again.uploaded);
         assert!(!again.changed_locally);
     }
 
     #[test]
     fn a_concurrent_write_is_merged_on_conflict() {
-        // A remote that injects another device's change right before our first upload,
-        // once, forcing the conflict path. The injected blob is encrypted with the same
-        // key so the engine can decrypt and merge it.
         struct RacingRemote {
             inner: MemoryRemote,
             other_bytes: Vec<u8>,
@@ -188,7 +230,7 @@ mod tests {
             }
         }
 
-        let key = key();
+        let (composite, key) = credentials();
         let base = Vault::new("Main").unwrap();
 
         let mut mine = base.clone();
@@ -201,13 +243,12 @@ mod tests {
             other_bytes: storage::encrypt_vault(&theirs, &key).unwrap(),
             injected: std::cell::Cell::new(false),
         };
-        // Seed a valid first version so our upload carries `base = Some(1)`.
         remote
             .inner
             .put("v1", None, &storage::encrypt_vault(&base, &key).unwrap())
             .unwrap();
 
-        let outcome = sync(&remote, "v1", &mine, &key).unwrap();
+        let outcome = sync(&remote, "v1", &mine, &composite, &key).unwrap();
         let titles: Vec<&str> = outcome.vault.entries.iter().map(|e| e.content.title.as_str()).collect();
         assert!(titles.contains(&"Mine"), "local change kept");
         assert!(titles.contains(&"Theirs"), "concurrent change merged");

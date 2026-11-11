@@ -251,20 +251,24 @@ impl OpenVault {
     }
 
     /// Folds the remote copy into this vault (via the sync engine) and, if the local
-    /// vault changed, saves it to disk. The encryption key here never leaves the device.
+    /// vault changed or the vault's salt must be adopted, saves it to disk. The
+    /// encryption key here never leaves the device.
     #[cfg(feature = "sync")]
     pub fn sync_remote(
         &mut self,
         remote: &dyn crate::sync::Remote,
         vault_id: &str,
-    ) -> Result<crate::sync::SyncOutcome> {
-        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &self.file.key)?;
-        if outcome.changed_locally {
+    ) -> Result<MergeReport> {
+        let composite = self.file.composite.clone();
+        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &composite, &self.file.key)?;
+        let key_changed = outcome.key.salt != self.file.key.salt || outcome.key.kdf != self.file.key.kdf;
+        if outcome.changed_locally || key_changed {
+            // Adopt the remote header so every device converges on one salt.
             let mut draft = Zeroizing::new(outcome.vault.clone());
-            self.file.save(&mut draft, None)?;
+            self.file.save(&mut draft, Some((composite, outcome.key)))?;
             std::mem::swap(&mut self.vault, &mut *draft);
         }
-        Ok(outcome)
+        Ok(outcome.report)
     }
 
     /// Picks up changes saved by other windows. Called periodically.

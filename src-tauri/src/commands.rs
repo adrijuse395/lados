@@ -488,8 +488,8 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 .clone()
                 .ok_or_else(|| Error::invalid("Sync is not set up"))?;
             let remote = crate::sync::HttpRemote::new(&config.server_url, &config.token);
-            let outcome = state.with_vault_mut(|open| open.sync_remote(&remote, &config.vault_id))?;
-            Ok(outcome.report)
+            let report = state.with_vault_mut(|open| open.sync_remote(&remote, &config.vault_id))?;
+            Ok(report)
         })
         .await
     }
