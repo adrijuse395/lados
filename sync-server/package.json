@@ -1,0 +1,19 @@
+{
+  "name": "lados-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-knowledge sync API for the Lados password manager (Cloudflare Worker).",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute lados-sync --file=./schema.sql --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.90.0"
+  }
+}

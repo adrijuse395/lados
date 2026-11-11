@@ -73,3 +73,22 @@ jobs:
       # are caught here instead of at upload time.
       - name: Lint the Firefox extension
         run: npx --yes web-ext lint --source-dir browser-extension
+
+  sync-server:
+    name: Sync server
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: sync-server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sync-server/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck

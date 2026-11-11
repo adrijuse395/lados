@@ -21,6 +21,10 @@ lados-firefox-*.zip
 lados-firefox-*.xpi
 browser-extension/build/
 
+# Lados Sync server (Cloudflare Worker)
+sync-server/node_modules/
+sync-server/.wrangler/
+
 # Editor / IDE
 .idea/
 .vscode/
