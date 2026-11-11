@@ -11,7 +11,7 @@ compatibility_date = "2024-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "lados-sync"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "daa03281-65ad-44f0-857e-de5ce110f721"
 
 # R2 bucket (encrypted vault blobs).
 # Create it with:  wrangler r2 bucket create lados-sync-blobs
