@@ -14,6 +14,7 @@ The name comes from [Ladon](https://en.wikipedia.org/wiki/Ladon_(mythology)), th
 - Smart merge when combining two vaults (e.g. phone + PC, without a sync server)
 - CSV and KeePass (`.kdbx`) import / export
 - Password generator, clipboard auto-clear, and auto-lock
+- Browser autofill via the Lados extension (Firefox; Chrome/Edge builds included)
 - Cross-platform shell via [Tauri](https://tauri.app/) v2 (desktop now; Android in progress)
 
 ## Cryptography
@@ -96,7 +97,20 @@ Installed apps check `https://github.com/adrijuse395/lados/releases/latest/downl
 ```
 src/                 Frontend (vanilla TypeScript + Vite)
 src-tauri/           Rust backend, crypto, storage, Tauri commands
+browser-extension/   Browser add-on (Firefox MV2 + Chrome/Edge MV3)
+scripts/             Build helpers (e.g. packaging the extension)
 brand/               Logo and mark assets
+```
+
+## Browser extension
+
+Fills login forms from the local vault over `127.0.0.1` only — no cloud, no account.
+While the vault is unlocked, the extension fetches a password **only at the moment you
+click fill**; nothing is cached in the page. See [browser-extension/README.md](browser-extension/README.md)
+to load it for development or build the store packages:
+
+```bash
+python3 scripts/build-extension.py
 ```
 
 ## License

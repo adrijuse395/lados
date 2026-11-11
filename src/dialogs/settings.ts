@@ -1,5 +1,5 @@
 import { applyTheme } from "../app";
-import { openExtensionPage } from "./browser-extension";
+import { extensionInstallDialog } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
@@ -101,8 +101,8 @@ export async function openSettings(): Promise<void> {
             ),
             h(
               "button",
-              { type: "button", class: "button", onClick: () => void openExtensionPage() },
-              "Install the Firefox extension",
+              { type: "button", class: "button", onClick: () => void extensionInstallDialog() },
+              "Install the browser extension",
             ),
           ),
       h(

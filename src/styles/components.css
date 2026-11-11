@@ -576,6 +576,12 @@ select.input.compact {
   margin: 3px 0;
 }
 
+.browser-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ----- Dialogs ----- */
 
 .modal-backdrop {
