@@ -21,6 +21,9 @@ tauri-build = { version = "2.7", features = [] }
 # the dev server. A plain `cargo build --release` must pass it explicitly, or the
 # app will try to reach the Vite dev URL at runtime.
 custom-protocol = ["tauri/custom-protocol"]
+# Optional cloud synchronization (see docs/SYNC.md). Off by default so normal builds
+# are unchanged while the feature is developed.
+sync = []
 
 [dependencies]
 # Shared shell (tray-icon is desktop-only; see target-specific deps below)

@@ -23,6 +23,8 @@ mod session;
 mod settings;
 mod state;
 mod storage;
+#[cfg(feature = "sync")]
+mod sync;
 #[cfg(desktop)]
 mod tray;
 mod views;
