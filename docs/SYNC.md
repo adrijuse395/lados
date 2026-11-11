@@ -220,3 +220,65 @@ enable sync, and says so in the UI. (A later version may allow key files with an
 - OPAQUE auth in v1 or v1.1?
 - Account password = derived from the master password (one secret) vs a separate login
   password (two secrets). Current proposal: derived from the master (one secret).
+
+## 18. Entitlement: how the paid module is enabled
+
+**Principle: the code is not the product; the hosted service is.** Because Lados is open
+source, we do not hide or DRM the sync code. The app ships with the sync module present;
+what makes it "paid" is that the feature is **useless without the server**, and **the
+server decides** whether an account may sync.
+
+There is nothing to "crack": a patched client that enables sync still has no data source
+without a server, and our server checks the account's plan and refuses if it is expired.
+A user who wants it for free can **self-host the server** (by design).
+
+Two distinct switches (people conflate them):
+
+1. **Build-time feature (`sync`)** — keeps the shipping binary unchanged *while we build
+   it*. When the feature ships, it is enabled for **everyone**; one binary, no "pro
+   build". This is intentional and open-source friendly.
+2. **Runtime entitlement** — decided **by the server**, per account, on every request.
+   This is the real gate.
+
+### Flow
+
+```
+Client                                        Server
+------                                        ------
+"Enable Sync"
+  -> register/login (email + authSecret)        verify stored verifier
+                                              <- JWT { accountId, plan, planValidUntil }
+   token in OS keychain
+
+each sync call carries the token:
+  GET/PUT /vaults/...   -------------------->   check token + plan
+                                                expired  -> 402 Payment Required
+                                                active   -> proceed
+
+Pay (Paddle Checkout)  ->  Paddle  ->  webhook  ->  set plan / planValidUntil
+next sync             ---------------------->   allowed again
+```
+
+- The **client never decides** entitlement. It may cache the last known plan to render the
+  UI, but the server is authoritative on every request.
+- **Payment is tied to the account** (email + authSecret), not to a device. One account =
+  unlimited devices and vaults.
+
+### UI states
+
+| State | Shown | Sync allowed |
+| --- | --- | --- |
+| No account | “Sync across your devices (subscription) — Set up” | No (app fully works offline) |
+| Account, active | “Last synced …”, *Sync now*, device list | Yes |
+| Account, expired | “Renew to keep syncing”, billing link | No (server returns 402) |
+| Offline / server down | No error spam; simply does not sync | N/A |
+
+The local application is **never** disabled — only the cloud part stops when unpaid.
+
+### Deliberately avoided
+
+- Local "license keys" with expiry checks (breakable, annoying, against the philosophy).
+- Hiding or obfuscating the sync source.
+- Per-device limits, fingerprinting, or artificial vault caps.
+- Blocking the free offline app for any reason.
+
