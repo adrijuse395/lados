@@ -137,6 +137,7 @@ pub fn run() {
             commands::restore_revision,
             commands::copy_revision_password,
             commands::open_entry_url,
+            commands::open_external_url,
             commands::create_folder,
             commands::update_folder,
             commands::move_folder,

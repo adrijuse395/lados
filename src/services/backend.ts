@@ -100,6 +100,7 @@ export const backend = {
   restoreRevision: (id: Uuid, index: number) => call<void>("restore_revision", { id, index }),
   copyRevisionPassword: (id: Uuid, index: number) => call<void>("copy_revision_password", { id, index }),
   openEntryUrl: (id: Uuid) => call<void>("open_entry_url", { id }),
+  openExternalUrl: (url: string) => call<void>("open_external_url", { url }),
 
   // Folders and icons
   createFolder: (parentId: Uuid | null, name: string, icon: Icon | null) =>

@@ -1,4 +1,5 @@
 import { applyTheme } from "../app";
+import { openExtensionPage } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
@@ -37,6 +38,7 @@ export async function openSettings(): Promise<void> {
     }
   };
   const current = preferences();
+  const mobile = await backend.isMobileShell().catch(() => false);
 
   const theme = segmented<Theme>(
     [
@@ -87,18 +89,22 @@ export async function openSettings(): Promise<void> {
         }),
       ),
       h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray),
-      h(
-        "section",
-        { class: "settings-section" },
-        h("h3", { text: "Browser fill (desktop)" }),
-        h(
-          "p",
-          {
-            class: "muted",
-            text: "The sideload extension talks to Lados at http://127.0.0.1:18765 while this app is running. Use a build that includes the bridge (npm run tauri dev / a fresh local build) — the older GitHub 0.1.3 installer does not.",
-          },
-        ),
-      ),
+      mobile
+        ? null
+        : h(
+            "section",
+            { class: "settings-section" },
+            h("h3", { text: "Browser fill (desktop)" }),
+            h(
+              "p",
+              { class: "muted", text: "The Firefox extension fills login forms from this vault while Lados is running and the vault is unlocked." },
+            ),
+            h(
+              "button",
+              { type: "button", class: "button", onClick: () => void openExtensionPage() },
+              "Install the Firefox extension",
+            ),
+          ),
       h(
         "section",
         { class: "settings-section" },

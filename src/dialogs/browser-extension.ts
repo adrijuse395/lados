@@ -1,5 +1,5 @@
 // Guided install for the Lados Firefox extension (desktop only).
-// Shown once after the vault is unlocked, until the user dismisses it.
+// Shown once after the vault is unlocked; also reachable from Settings.
 import { backend } from "../services/backend";
 import { showDialog } from "../ui/modal";
 import { h } from "../ui/dom";
@@ -26,10 +26,19 @@ export function markExtensionDismissed(): void {
   }
 }
 
-/** Opens the AMO page in the default browser (ideally Firefox). */
+/**
+ * Opens the add-on page in the user's default browser.
+ * A webview cannot open external URLs itself, so this goes through the Rust
+ * opener command; `window.open` would silently do nothing.
+ */
 export async function openExtensionPage(): Promise<void> {
-  void window.open(AMO_URL, "_blank");
-  toast("Opening the Lados extension page in your browser.", "info");
+  try {
+    await backend.openExternalUrl(AMO_URL);
+    toast("Opening the Lados extension page in your browser.", "info");
+  } catch (error) {
+    toast("Could not open the browser. Open addons.mozilla.org and search for “Lados”.", "error");
+    console.error(error);
+  }
 }
 
 export async function maybeShowExtensionInstall(): Promise<void> {
@@ -53,16 +62,15 @@ export async function maybeShowExtensionInstall(): Promise<void> {
         { class: "muted", style: "padding-left: 20px; margin: 0; line-height: 1.6" },
         h("li", {}, "No cloud, no account — the extension talks only to Lados on this computer."),
         h("li", {}, "Works on any login page where you have a saved entry."),
-        h("li", {}, "Your vault stays unlocked only while you use it; locking clears everything."),
+        h("li", {}, "You can also install it later from Settings."),
       ),
       h(
         "div",
         { class: "install-steps" },
-        h("strong", {}, "Install in 3 steps:"),
+        h("strong", {}, "Install in 2 steps:"),
         h("ol", {}, [
-          h("li", {}, "Click “Install in Firefox” below."),
-          h("li", {}, "On addons.mozilla.org, click “Add to Firefox”."),
-          h("li", {}, "Return to Lados — passwords will fill automatically."),
+          h("li", {}, "Click “Install in Firefox” below — your browser opens the add-on page."),
+          h("li", {}, "Click “Add to Firefox” there. Lados will then fill your logins."),
         ]),
       ),
     ),
@@ -74,4 +82,7 @@ export async function maybeShowExtensionInstall(): Promise<void> {
       return "install";
     },
   });
+
+  // Shown once: from now on the Settings entry is the place to install it.
+  markExtensionDismissed();
 }

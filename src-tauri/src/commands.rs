@@ -987,8 +987,20 @@ pub fn open_entry_url(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> R
         .map_err(|error| Error::System(error.to_string()))
 }
 
-// ----- Folders and icons -----
+/// Opens a web address in the user's default browser. Used by the interface to
+/// send the user to the Firefox add-on page (a webview cannot open external URLs itself).
+#[tauri::command]
+pub fn open_external_url(app: AppHandle, url: String) -> Result<()> {
+    let url = url.trim();
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return Err(Error::invalid("Only web addresses can be opened"));
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| Error::System(error.to_string()))
+}
 
+// ----- Folders and icons -----
 #[tauri::command(async)]
 pub fn create_folder(
     app: AppHandle,
