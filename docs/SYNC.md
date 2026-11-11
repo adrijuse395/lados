@@ -172,6 +172,10 @@ enable sync, and says so in the UI. (A later version may allow key files with an
   an account remains free forever.
 - Optional early **“founder” lifetime** tier to bootstrap — only if we accept that it
   funds ongoing costs.
+- **Comp accounts:** the maintainer (and later, contributors/testers) get a **comp**
+  plan — a single flag, treated as active and never expiring, exempt from payment.
+  Deliberately **not** a roles/permissions system: one user doesn't justify that
+  complexity. The client just sees an active plan.
 
 ## 12. Hosting and technology
 
