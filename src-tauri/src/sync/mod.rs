@@ -11,7 +11,7 @@ mod engine;
 mod http;
 mod remote;
 
-pub use account::{DEFAULT_SERVER, auth_secret, ensure_vault, login, register};
+pub use account::{DEFAULT_SERVER, auth_secret, ensure_vault, legacy_auth_secret, login, register};
 pub use engine::{SyncOutcome, sync};
 pub use http::HttpRemote;
 pub use remote::{MemoryRemote, PutOutcome, Remote, RemoteVault};

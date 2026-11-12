@@ -110,7 +110,7 @@ async function register(env: Env, request: Request): Promise<Response> {
   const verifier = await verifierFor(salt, authSecret);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, plan, created_at) VALUES (?, ?, ?, ?, 'active', ?)",
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, created_at) VALUES (?, ?, ?, ?, 'argon2', 'active', ?)",
   )
     .bind(id, email, salt, verifier, Date.now())
     .run();
@@ -120,21 +120,39 @@ async function register(env: Env, request: Request): Promise<Response> {
 }
 
 async function login(env: Env, request: Request): Promise<Response> {
-  const body = await readJson<{ email?: string; authSecret?: string }>(request);
+  const body = await readJson<{ email?: string; authSecret?: string; legacyAuthSecret?: string }>(request);
   const email = body?.email?.trim().toLowerCase();
   const authSecret = body?.authSecret;
+  const legacyAuthSecret = body?.legacyAuthSecret;
   if (!email || !authSecret) return json({ error: "invalid_request" }, 400);
 
   const row = await env.DB.prepare(
-    "SELECT id, salt, verifier, plan FROM accounts WHERE email = ?",
+    "SELECT id, salt, verifier, scheme, plan FROM accounts WHERE email = ?",
   )
     .bind(email)
-    .first<{ id: string; salt: string; verifier: string; plan: string }>();
+    .first<{ id: string; salt: string; verifier: string; scheme: string; plan: string }>();
   if (!row) return json({ error: "invalid_credentials" }, 401);
 
-  const candidate = await verifierFor(row.salt, authSecret);
-  if (!timingSafeEqual(candidate, row.verifier)) {
-    return json({ error: "invalid_credentials" }, 401);
+  if (row.scheme === "argon2") {
+    const candidate = await verifierFor(row.salt, authSecret);
+    if (!timingSafeEqual(candidate, row.verifier)) {
+      return json({ error: "invalid_credentials" }, 401);
+    }
+  } else {
+    // Account created before the auth-secret hardening: verify with the old derivation, then
+    // replace the stored credential with the Argon2 one so the account is upgraded for good.
+    if (!legacyAuthSecret) return json({ error: "invalid_credentials" }, 401);
+    const candidate = await verifierFor(row.salt, legacyAuthSecret);
+    if (!timingSafeEqual(candidate, row.verifier)) {
+      return json({ error: "invalid_credentials" }, 401);
+    }
+    const salt = randomHex(16);
+    const verifier = await verifierFor(salt, authSecret);
+    await env.DB.prepare(
+      "UPDATE accounts SET salt = ?, verifier = ?, scheme = 'argon2' WHERE id = ?",
+    )
+      .bind(salt, verifier, row.id)
+      .run();
   }
 
   const token = await startSession(env, row.id);

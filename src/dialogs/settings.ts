@@ -4,6 +4,7 @@ import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
 import type { AppStatus, Preferences, Theme } from "../types";
+import { relativeTime } from "../utils/format";
 import { describeChanges, hasChanges } from "./reports";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
@@ -25,16 +26,6 @@ function minutesLabel(minutes: number): string {
 
 function secondsLabel(seconds: number): string {
   return seconds === 0 ? "Never" : `${seconds} seconds`;
-}
-
-function relativeTime(ms: number): string {
-  const minutes = Math.floor((Date.now() - ms) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
-  const days = Math.floor(hours / 24);
-  return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
 export async function openSettings(): Promise<void> {

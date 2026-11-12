@@ -15,7 +15,7 @@ all merging happens on the user's device.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/auth/register` | `{ email, authSecret }` → `{ token, plan }` |
-| POST | `/auth/login` | `{ email, authSecret }` → `{ token, plan }` |
+| POST | `/auth/login` | `{ email, authSecret, legacyAuthSecret? }` → `{ token, plan }` |
 | GET | `/me` | account + plan |
 | GET | `/vaults` | list vaults |
 | POST | `/vaults` | `{ name }` → create a vault |
@@ -24,6 +24,20 @@ all merging happens on the user's device.
 | DELETE | `/vaults/:id` | remove a vault |
 
 Auth is a bearer token (opaque, stored hashed, 30-day TTL).
+
+`authSecret` is `Argon2id(compositeKey)` computed on the device, so a leaked credential
+table stays expensive to brute-force. Accounts created before this hardening carry
+`scheme = 'legacy'` and are silently upgraded in place on their next successful login
+(the client sends the old derivation as `legacyAuthSecret`).
+
+### Upgrading an existing database
+
+New databases get the `scheme` column from `schema.sql`. An existing one needs:
+
+```bash
+npx wrangler d1 execute lados-sync --remote \
+  --command "ALTER TABLE accounts ADD COLUMN scheme TEXT NOT NULL DEFAULT 'legacy'"
+```
 
 ## One-time setup (free tier — no card required)
 

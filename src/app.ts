@@ -35,7 +35,6 @@ darkScheme.addEventListener("change", () => applyTheme(themePreference));
 async function loadVault(): Promise<void> {
   setVault(await backend.getVaultView());
   store.searchResults = store.query.trim() ? new Set(await backend.searchEntries(store.query)) : null;
-  scheduleSync();
 }
 
 // ----- Cloud sync (reconcile on open, push after a change) -----
@@ -57,14 +56,21 @@ export function scheduleSync(): void {
 export async function performSync(): Promise<MergeReport> {
   if (syncRunning) throw new Error("A sync is already in progress");
   syncRunning = true;
+  store.syncing = true;
+  store.syncFailed = false;
+  redraw();
   try {
     const report = await backend.syncNow();
     store.status = await backend.getStatus();
     await loadVault();
-    redraw();
     return report;
+  } catch (error) {
+    store.syncFailed = true;
+    throw error;
   } finally {
     syncRunning = false;
+    store.syncing = false;
+    redraw();
   }
 }
 
@@ -83,6 +89,7 @@ export async function showStatus(status: AppStatus): Promise<void> {
     }
     void syncAutofillCache();
     void maybeShowExtensionInstall();
+    scheduleSync();
     return;
   }
 
@@ -117,6 +124,7 @@ export async function reloadVault(): Promise<void> {
   }
   redraw();
   void syncAutofillCache();
+  scheduleSync();
 }
 
 /** Redraws the vault screen from the data already loaded. */

@@ -125,6 +125,25 @@ pub fn derive_key(composite: &[u8; KEY_LEN], salt: &[u8; SALT_LEN], params: KdfP
     Ok(key)
 }
 
+/// Argon2id parameters for the sync account's auth secret. They are fixed on purpose:
+/// every device must derive the same secret, so they cannot be calibrated per machine.
+pub const SYNC_AUTH_KDF: KdfParams = KdfParams {
+    memory_kib: 64 * 1024,
+    iterations: 3,
+    parallelism: 4,
+};
+
+/// Derives the secret that authenticates the sync account, as lowercase hex.
+///
+/// The composite key is cheap to compute, so on its own it would let anyone who stole the
+/// server's credential table test master-password guesses quickly. Running it through
+/// Argon2id first makes each guess as expensive as unlocking the vault itself.
+pub fn sync_auth_secret(composite: &SecretKey) -> Result<String> {
+    let salt: [u8; SALT_LEN] = sha256(b"lados-sync-auth-salt-v1");
+    let secret = derive_key(composite, &salt, SYNC_AUTH_KDF)?;
+    Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 /// Encrypts and authenticates `plaintext` with XChaCha20-Poly1305.
 ///
 /// `associated_data` is not encrypted but is authenticated: changing a single bit of it

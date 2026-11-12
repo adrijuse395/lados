@@ -14,9 +14,15 @@ use super::http::{self, Response};
 /// Default hosted server. Stored per account so self-hosting can point elsewhere.
 pub const DEFAULT_SERVER: &str = "https://lados-sync.ladospwm.workers.dev";
 
-/// A high-entropy secret derived from the master credentials, domain-separated from the
-/// vault key and used only to authenticate. Returned as lowercase hex.
-pub fn auth_secret(composite: &SecretKey) -> String {
+/// The secret that authenticates the account: Argon2id over the master credentials,
+/// domain-separated from the vault key. Returned as lowercase hex.
+pub fn auth_secret(composite: &SecretKey) -> Result<String> {
+    crypto::sync_auth_secret(composite)
+}
+
+/// The pre-hardening derivation (a single fast hash of the composite key). Kept only so
+/// accounts created before the Argon2 verifier can sign in once and be upgraded.
+pub fn legacy_auth_secret(composite: &SecretKey) -> String {
     let mut buffer = Vec::with_capacity(19 + 32);
     buffer.extend_from_slice(b"lados-sync-auth-v1");
     buffer.extend_from_slice(&**composite);
@@ -48,10 +54,12 @@ pub fn register(base: &str, email: &str, auth_secret: &str) -> Result<String> {
     }
 }
 
-/// Logs in with the derived auth secret. Fails with invalid credentials if wrong.
-pub fn login(base: &str, email: &str, auth_secret: &str) -> Result<String> {
+/// Logs in with the derived auth secret. `legacy_secret` is the old derivation, sent only
+/// so a pre-hardening account can authenticate once and be upgraded. Fails with invalid
+/// credentials if wrong.
+pub fn login(base: &str, email: &str, auth_secret: &str, legacy_secret: &str) -> Result<String> {
     let url = format!("{}/auth/login", base.trim_end_matches('/'));
-    let body = json!({ "email": email, "authSecret": auth_secret });
+    let body = json!({ "email": email, "authSecret": auth_secret, "legacyAuthSecret": legacy_secret });
     let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
     match response.status {
         200 => token_from(response),

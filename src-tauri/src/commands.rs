@@ -443,9 +443,10 @@ pub async fn sync_sign_in(app: AppHandle, email: String) -> Result<AppStatus> {
                 return Err(Error::invalid("Enter a valid email address"));
             }
             let composite = state.with_vault(|open| Ok(open.composite()))?;
-            let auth = crate::sync::auth_secret(&composite);
+            let auth = crate::sync::auth_secret(&composite)?;
+            let legacy = crate::sync::legacy_auth_secret(&composite);
             let base = crate::sync::DEFAULT_SERVER.to_string();
-            let token = match crate::sync::login(&base, &email, &auth) {
+            let token = match crate::sync::login(&base, &email, &auth, &legacy) {
                 Ok(token) => token,
                 Err(Error::InvalidCredentials) => crate::sync::register(&base, &email, &auth)?,
                 Err(error) => return Err(error),

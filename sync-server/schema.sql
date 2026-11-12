@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   email       TEXT NOT NULL UNIQUE,
   salt        TEXT NOT NULL,
   verifier    TEXT NOT NULL,
+  scheme      TEXT NOT NULL DEFAULT 'legacy',  -- legacy | argon2
   plan        TEXT NOT NULL DEFAULT 'active',  -- active | expired
   created_at  INTEGER NOT NULL
 );

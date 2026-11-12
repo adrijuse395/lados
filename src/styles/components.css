@@ -129,6 +129,76 @@
   height: 15px;
 }
 
+/* Cloud sync indicator in the vault top bar (shown to signed-in users). */
+.sync-chip-slot {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.sync-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.sync-chip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sync-chip-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.sync-chip.sync-ok {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
+}
+
+.sync-chip.sync-warn {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+}
+
+.sync-chip.sync-busy .sync-chip-icon {
+  animation: sync-spin 0.9s linear infinite;
+}
+
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Invitation to Lados Sync on the start screen. */
+.welcome-sync {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.welcome-sync .icon {
+  width: 15px;
+  height: 15px;
+}
+
 .spinner {
   flex: none;
   width: 14px;

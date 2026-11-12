@@ -16,6 +16,10 @@ interface Store {
   searchResults: Set<Uuid> | null;
   expandedFolders: Set<Uuid>;
   sort: SortOrder;
+  /** A cloud sync pass is running right now. */
+  syncing: boolean;
+  /** The last cloud sync pass failed (usually offline); changes remain safe on this device. */
+  syncFailed: boolean;
 }
 
 export const store: Store = {
@@ -27,6 +31,8 @@ export const store: Store = {
   searchResults: null,
   expandedFolders: new Set(),
   sort: "title",
+  syncing: false,
+  syncFailed: false,
 };
 
 interface FolderIndex {

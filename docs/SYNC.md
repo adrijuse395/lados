@@ -60,8 +60,13 @@ From the user's master password (and optional key file — see §9) the client d
 | `authSecret` | exchanged during login only | Authenticates the account |
 
 - The server stores a **verifier**: `SHA-256(salt ‖ authSecret)` with a per-account
-  salt. No server-side KDF is needed because `authSecret` is already a high-entropy key
-  (the expensive Argon2 work ran on the client). The server never stores `authSecret`.
+  salt. `authSecret` is `Argon2id(compositeKey)` (fixed parameters, so every device derives
+  the same value), so an attacker who stole the credential table still has to run the full
+  Argon2 cost for **every** master-password guess — the same cost as unlocking the vault.
+  The server never stores `authSecret`.
+- **Migration:** accounts created before the hardening carry `scheme = 'legacy'` (the fast
+  derivation). On the next successful login the server verifies the legacy secret and then
+  rewrites the stored verifier from the Argon2 secret, upgrading the account in place.
 - **v1 login:** TLS + verifier. **v1.1 (optional):** upgrade to OPAQUE (RFC 9807) so the
   server never sees anything password-equivalent.
 - The encryption key derivation stays exactly as it is today (Argon2id + per-file salt

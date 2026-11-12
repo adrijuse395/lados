@@ -14,6 +14,17 @@ export function formatDateTime(iso: string): string {
   return Number.isNaN(date.getTime()) ? iso : dateTimeFormat.format(date);
 }
 
+/** A coarse "how long ago" label, e.g. "just now", "5 min ago", "2 days ago". */
+export function relativeTime(ms: number): string {
+  const minutes = Math.floor((Date.now() - ms) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
 /** Reads a `YYYY-MM-DD` value as a calendar date in the local time zone. */
 export function parseDate(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);

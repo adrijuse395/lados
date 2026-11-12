@@ -1,15 +1,18 @@
 // The main window of an unlocked vault: top bar, folders, entry list and details.
 
 import * as actions from "../actions";
+import { performSync } from "../app";
+import { describeChanges, hasChanges } from "../dialogs/reports";
 import { backend } from "../services/backend";
 import { store, visibleEntries } from "../state/store";
 import type { Uuid } from "../types";
 import { iconButton } from "../ui/controls";
 import { h, isTyping, mount } from "../ui/dom";
-import { dragonMark, svgIcon } from "../ui/icons";
-import { openMenu } from "../ui/menu";
+import { dragonMark, svgIcon, type IconName } from "../ui/icons";
+import { openMenu, type MenuEntry } from "../ui/menu";
 import { isModalOpen } from "../ui/modal";
-import { toastError } from "../ui/toast";
+import { toast, toastError } from "../ui/toast";
+import { relativeTime } from "../utils/format";
 import { renderEntryDetails } from "./entry-details";
 import { focusEntryList, highlightSelection, renderEntryList } from "./entry-list";
 import { renderSidebar } from "./sidebar";
@@ -17,6 +20,7 @@ import { renderSidebar } from "./sidebar";
 interface VaultElements {
   screen: HTMLElement;
   name: HTMLElement;
+  syncChip: HTMLElement;
   search: HTMLInputElement;
   sidebar: HTMLElement;
   list: HTMLElement;
@@ -49,6 +53,107 @@ function openMoreMenu(anchor: HTMLElement): void {
     { label: "Close vault", icon: "signOut", onSelect: () => void actions.closeVault() },
     { label: "Quit Lados", icon: "power", onSelect: () => void actions.quit() },
   ]);
+}
+
+// ----- Cloud sync indicator (only shown to signed-in users) -----
+
+interface SyncChipState {
+  label: string;
+  icon: IconName;
+  tone: "busy" | "warn" | "ok" | "off";
+  title: string;
+}
+
+function syncChipState(): SyncChipState | null {
+  const sync = store.status?.sync;
+  if (!sync?.loggedIn) return null;
+  if (store.syncing) {
+    return { label: "Syncing…", icon: "refresh", tone: "busy", title: "Syncing this vault…" };
+  }
+  if (store.syncFailed) {
+    return {
+      label: "Sync failed",
+      icon: "warning",
+      tone: "warn",
+      title: "Could not reach the sync server. Your changes are safe on this device and will sync when it is back.",
+    };
+  }
+  if (sync.thisVaultSynced) {
+    const when = sync.lastSyncedAt ? ` · ${relativeTime(sync.lastSyncedAt)}` : "";
+    return { label: "Synced", icon: "cloudCheck", tone: "ok", title: `Up to date${when}. Click to sync now.` };
+  }
+  return { label: "Not synced", icon: "cloud", tone: "off", title: "This vault is not synced yet. Click to set it up." };
+}
+
+function renderSyncChip(slot: HTMLElement): void {
+  const state = syncChipState();
+  if (!state) {
+    slot.replaceChildren();
+    return;
+  }
+  slot.replaceChildren(
+    h(
+      "button",
+      {
+        type: "button",
+        class: ["sync-chip", `sync-${state.tone}`],
+        title: state.title,
+        "aria-label": state.title,
+        onClick: (event: MouseEvent) => openSyncMenu(event.currentTarget as HTMLElement),
+      },
+      svgIcon(state.icon, "icon sync-chip-icon"),
+      h("span", { class: "sync-chip-label", text: state.label }),
+    ),
+  );
+}
+
+function openSyncMenu(anchor: HTMLElement): void {
+  const sync = store.status?.sync;
+  if (!sync?.loggedIn) return;
+  const entries: MenuEntry[] = [];
+  if (sync.thisVaultSynced) {
+    entries.push({ label: "Sync now", icon: "refresh", onSelect: () => void syncNow() });
+  } else {
+    entries.push({ label: "Sync this vault", icon: "cloudCheck", onSelect: () => void enableVaultSync() });
+  }
+  entries.push("separator");
+  if (sync.thisVaultSynced) {
+    entries.push({ label: "Stop syncing this vault", icon: "cloud", danger: true, onSelect: () => void disableVaultSync() });
+  }
+  entries.push({ label: "Sync settings…", icon: "settings", onSelect: () => void actions.showSettings() });
+  openMenu(anchor, entries);
+}
+
+async function syncNow(): Promise<void> {
+  try {
+    const report = await performSync();
+    toast(
+      hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date",
+      hasChanges(report) ? "success" : "info",
+    );
+  } catch (error) {
+    toastError(error);
+  }
+}
+
+async function enableVaultSync(): Promise<void> {
+  try {
+    store.status = await backend.syncEnable();
+    toast("This vault is now synced", "success");
+    drawVault();
+  } catch (error) {
+    toastError(error);
+  }
+}
+
+async function disableVaultSync(): Promise<void> {
+  try {
+    store.status = await backend.syncDisable();
+    toast("Stopped syncing this vault");
+    drawVault();
+  } catch (error) {
+    toastError(error);
+  }
 }
 
 async function runSearch(): Promise<void> {
@@ -105,6 +210,7 @@ export function renderVault(container: HTMLElement): void {
     },
   });
   const name = h("span", { class: "vault-name truncate" });
+  const syncChip = h("span", { class: "sync-chip-slot" });
   const sidebar = h("aside", { class: "sidebar", "aria-label": "Folders" });
   const list = h("section", { class: "entry-pane", "aria-label": "Entries" });
   const details = h("section", { class: "details-pane", "aria-label": "Entry details" });
@@ -135,7 +241,7 @@ export function renderVault(container: HTMLElement): void {
         svgIcon("folder"),
         h("span", { class: "folders-toggle-label", text: "Folders" }),
       ),
-      h("div", { class: "topbar-brand" }, dragonMark("logo small"), name),
+      h("div", { class: "topbar-brand" }, dragonMark("logo small"), name, syncChip),
       h("label", { class: "search-box" }, svgIcon("search"), search, h("kbd", { text: "Ctrl+F" })),
       h(
         "div",
@@ -191,7 +297,7 @@ export function renderVault(container: HTMLElement): void {
   });
 
   mount(container, screen);
-  elements = { screen, name, search, sidebar, list, details };
+  elements = { screen, name, syncChip, search, sidebar, list, details };
   drawVault();
 }
 
@@ -205,6 +311,7 @@ export function drawVault(): void {
   if (!elements || !isVaultMounted() || !store.vault) return;
   elements.name.textContent = store.vault.name;
   elements.name.title = store.vault.path;
+  renderSyncChip(elements.syncChip);
   if (document.activeElement !== elements.search) elements.search.value = store.query;
   syncDetailsOpenState();
   renderSidebar(elements.sidebar);
