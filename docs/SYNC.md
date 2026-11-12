@@ -327,3 +327,16 @@ The local application is **never** disabled — only the cloud part stops when u
 - Per-device limits, fingerprinting, or artificial vault caps.
 - Blocking the free offline app for any reason.
 
+## 19. Vault model and binding
+
+- **An account can own N vaults** (the server already supports it: `vaults.account_id`).
+  For v1 we **bind one vault per account** — the common case, kept simple.
+- **Each local `.lados` file binds 1:1 to one server vault**, identified by the vault's
+  own **UUID** (stored in the sync config). A copy of the file matches; a *different*
+  local vault does not, and **sync refuses to merge it** instead of mixing data.
+- The client shows what a sync did (entries added/updated) and the last sync time, so the
+  behaviour is visible rather than silent.
+- **Future (additive, no rewrite):** a true “new device” flow — *sign in → list your
+  vault(s) → download the one you want* — which unlocks multiple vaults per account and,
+  later, team/business plans.
+

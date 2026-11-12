@@ -75,6 +75,8 @@ export interface SyncView {
   serverUrl: string;
   email: string;
   vaultId: string;
+  /** Last successful sync, in Unix milliseconds. */
+  lastSyncedAt: number | null;
 }
 
 export type Icon = { kind: "builtin"; value: string } | { kind: "custom"; value: Uuid };

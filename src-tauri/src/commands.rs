@@ -443,8 +443,8 @@ pub async fn sync_setup(app: AppHandle, email: String) -> Result<AppStatus> {
             if !email.contains('@') {
                 return Err(Error::invalid("Enter a valid email address"));
             }
-            let (composite, vault_name) =
-                state.with_vault(|open| Ok((open.composite(), open.vault().name.clone())))?;
+            let (composite, vault_name, local_id) =
+                state.with_vault(|open| Ok((open.composite(), open.vault().name.clone(), open.vault().id.to_string())))?;
             let auth = crate::sync::auth_secret(&composite);
             let base = crate::sync::DEFAULT_SERVER.to_string();
 
@@ -461,7 +461,9 @@ pub async fn sync_setup(app: AppHandle, email: String) -> Result<AppStatus> {
                     email,
                     token,
                     vault_id,
+                    local_vault_id: local_id,
                     last_version: None,
+                    last_synced_at: None,
                 });
             })?;
             Ok(state.status())
@@ -487,8 +489,19 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 .sync
                 .clone()
                 .ok_or_else(|| Error::invalid("Sync is not set up"))?;
+            let open_id = state.with_vault(|open| Ok(open.vault().id.to_string()))?;
+            if !config.local_vault_id.is_empty() && config.local_vault_id != open_id {
+                return Err(Error::invalid(
+                    "This vault isn’t the one set up for sync. Open the synced vault, or set up sync for this one.",
+                ));
+            }
             let remote = crate::sync::HttpRemote::new(&config.server_url, &config.token);
             let report = state.with_vault_mut(|open| open.sync_remote(&remote, &config.vault_id))?;
+            state.update_settings(|settings| {
+                if let Some(sync) = settings.sync.as_mut() {
+                    sync.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                }
+            })?;
             Ok(report)
         })
         .await

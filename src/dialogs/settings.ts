@@ -4,6 +4,7 @@ import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
 import type { Preferences, Theme } from "../types";
+import { describeChanges, hasChanges } from "./reports";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
 import { promptDialog, showDialog } from "../ui/modal";
@@ -24,6 +25,16 @@ function minutesLabel(minutes: number): string {
 
 function secondsLabel(seconds: number): string {
   return seconds === 0 ? "Never" : `${seconds} seconds`;
+}
+
+function relativeTime(ms: number): string {
+  const minutes = Math.floor((Date.now() - ms) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
 export async function openSettings(): Promise<void> {
@@ -88,8 +99,9 @@ export async function openSettings(): Promise<void> {
   const renderSync = () => {
     const sync = store.status?.sync ?? null;
     if (sync) {
+      const when = sync.lastSyncedAt ? ` · last synced ${relativeTime(sync.lastSyncedAt)}` : "";
       syncContainer.replaceChildren(
-        h("p", { class: "muted", text: `Signed in as ${sync.email}. Your devices using this account stay in sync.` }),
+        h("p", { class: "muted", text: `Synced as ${sync.email}${when}.` }),
         h(
           "div",
           { class: "browser-choices" },
@@ -119,9 +131,11 @@ export async function openSettings(): Promise<void> {
 
   const runSync = async () => {
     try {
-      await backend.syncNow();
+      const report = await backend.syncNow();
+      store.status = await backend.getStatus();
       await reloadVault();
-      toast("Synced", "success");
+      renderSync();
+      toast(hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date", hasChanges(report) ? "success" : "info");
     } catch (error) {
       toastError(error);
     }

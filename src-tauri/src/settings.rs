@@ -84,8 +84,12 @@ pub struct SyncConfig {
     pub token: String,
     /// The vault this device is bound to on the server.
     pub vault_id: String,
+    /// The local vault's own id, so a different vault is never merged by mistake.
+    pub local_vault_id: String,
     /// Last remote version this device saw.
     pub last_version: Option<u64>,
+    /// Last successful sync, in Unix milliseconds.
+    pub last_synced_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

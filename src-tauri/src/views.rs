@@ -44,6 +44,8 @@ pub struct SyncView {
     pub server_url: String,
     pub email: String,
     pub vault_id: String,
+    /// Last successful sync, in Unix milliseconds.
+    pub last_synced_at: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]

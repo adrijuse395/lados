@@ -143,6 +143,7 @@ impl AppState {
                 server_url: sync.server_url.clone(),
                 email: sync.email.clone(),
                 vault_id: sync.vault_id.clone(),
+                last_synced_at: sync.last_synced_at,
             }),
         }
     }
