@@ -110,7 +110,10 @@ function renderSyncChip(slot: HTMLElement): void {
 function openSyncMenu(anchor: HTMLElement): void {
   const sync = store.status?.sync;
   if (!sync?.loggedIn) return;
-  const entries: MenuEntry[] = [];
+  const entries: MenuEntry[] = [
+    { label: `Signed in as ${sync.email}`, icon: "user", disabled: true, onSelect: () => undefined },
+    "separator",
+  ];
   if (sync.thisVaultSynced) {
     entries.push({ label: "Sync now", icon: "refresh", onSelect: () => void syncNow() });
   } else {
@@ -120,7 +123,7 @@ function openSyncMenu(anchor: HTMLElement): void {
   if (sync.thisVaultSynced) {
     entries.push({ label: "Stop syncing this vault", icon: "cloud", danger: true, onSelect: () => void disableVaultSync() });
   }
-  entries.push({ label: "Sync settings…", icon: "settings", onSelect: () => void actions.showSettings() });
+  entries.push({ label: "Lados Sync…", icon: "settings", onSelect: () => void actions.showSyncCenter() });
   openMenu(anchor, entries);
 }
 

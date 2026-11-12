@@ -98,3 +98,13 @@ pub fn ensure_vault(base: &str, token: &str, name: &str) -> Result<String> {
         .map(str::to_string)
         .ok_or_else(|| Error::System(format!("could not create vault ({})", created.status)))
 }
+
+/// Deletes the account and every vault it owns on the server.
+pub fn delete_account(base: &str, token: &str) -> Result<()> {
+    let url = format!("{}/account", base.trim_end_matches('/'));
+    let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => Ok(()),
+        _ => Err(Error::System(format!("could not delete the account ({})", response.status))),
+    }
+}

@@ -234,6 +234,11 @@ async function putVault(env: Env, account: AccountRow, id: string, request: Requ
   const changed = result.meta.changes ?? 0;
   if (changed === 0) return json({ error: "conflict", version: vault.version }, 409);
 
+  // Keep only the current blob: the client already merged, so older versions are dead weight.
+  // This bounds storage to one blob per vault no matter how many edits a user makes.
+  if (vault.version > 0) {
+    await env.BLOBS.delete(blobKey(id, vault.version));
+  }
   return json({ version: next });
 }
 
@@ -243,6 +248,23 @@ async function deleteVault(env: Env, account: AccountRow, id: string): Promise<R
   await env.DB.prepare("DELETE FROM vaults WHERE id = ? AND account_id = ?")
     .bind(id, account.id)
     .run();
+  return json({ ok: true });
+}
+
+/// Deletes the account, its vault rows, its session tokens and its stored blobs.
+async function deleteAccount(env: Env, account: AccountRow): Promise<Response> {
+  const { results } = await env.DB.prepare("SELECT id FROM vaults WHERE account_id = ?")
+    .bind(account.id)
+    .all<{ id: string }>();
+  for (const vault of results ?? []) {
+    const listed = await env.BLOBS.list({ prefix: `vaults/${vault.id}/` });
+    if (listed.objects.length > 0) {
+      await env.BLOBS.delete(listed.objects.map((object) => object.key));
+    }
+  }
+  await env.DB.prepare("DELETE FROM vaults WHERE account_id = ?").bind(account.id).run();
+  await env.DB.prepare("DELETE FROM sessions WHERE account_id = ?").bind(account.id).run();
+  await env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(account.id).run();
   return json({ ok: true });
 }
 
@@ -259,6 +281,8 @@ export default {
 
       const account = await authenticate(env, request);
       if (!account) return json({ error: "unauthorized" }, 401);
+
+      if (path === "/account" && method === "DELETE") return await deleteAccount(env, account);
 
       if (account.plan !== "active") return json({ error: "payment_required", plan: account.plan }, 402);
 

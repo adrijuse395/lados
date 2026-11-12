@@ -1,15 +1,16 @@
 // Shown when no vault is selected: create one, open one or pick a recent one.
 
-import { showStatus } from "../app";
+import { refreshStatus, showStatus } from "../app";
 import { createVaultDialog } from "../dialogs/create-vault";
 import { pickVaultToOpen } from "../dialogs/open-vault";
+import { openSyncCenter } from "../dialogs/sync-center";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
 import type { RecentVault } from "../types";
 import { fileNameOf, iconButton } from "../ui/controls";
 import { h, mount } from "../ui/dom";
 import { logo, svgIcon } from "../ui/icons";
-import { confirmDialog, showDialog } from "../ui/modal";
+import { confirmDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 
 async function selectVault(path: string): Promise<void> {
@@ -46,18 +47,9 @@ async function createVault(): Promise<void> {
   }
 }
 
-async function showSyncInfo(): Promise<void> {
-  await showDialog<true>({
-    title: "Lados Sync",
-    size: "small",
-    body: h("p", {
-      class: "muted",
-      text: "Lados Sync keeps one vault up to date across your devices. It is optional and paid, and your vault is encrypted on this device before it is uploaded — only your master password can open it. Open a vault, then turn it on in Settings › Cloud sync.",
-    }),
-    hideCancel: true,
-    submitLabel: "Got it",
-    onSubmit: () => true,
-  });
+async function openAccount(): Promise<void> {
+  await openSyncCenter();
+  await refreshStatus();
 }
 
 async function removeListedVault(path: string, mobile: boolean): Promise<void> {
@@ -103,6 +95,7 @@ function recentItem(vault: RecentVault, mobile: boolean): HTMLElement {
           text: vault.exists ? vault.path : `Not found: ${vault.path}`,
         }),
       ),
+      store.status?.sync.loggedIn && vault.synced ? svgIcon("cloudCheck", "icon recent-sync-badge") : null,
     ),
     iconButton("close", removeLabel, () => void removeListedVault(vault.path, mobile), "recent-forget"),
   );
@@ -170,15 +163,23 @@ export function renderWelcome(container: HTMLElement): void {
             openLabel,
           ),
         ),
-        mobile || status?.sync.loggedIn
+        mobile
           ? null
-          : h(
-              "p",
-              { class: "welcome-sync muted" },
-              svgIcon("cloud"),
-              h("span", { text: "The same vault, on every device: " }),
-              h("button", { type: "button", class: "link-button", onClick: () => void showSyncInfo() }, "Lados Sync"),
-            ),
+          : status?.sync.loggedIn
+            ? h(
+                "p",
+                { class: "welcome-sync muted" },
+                svgIcon("cloudCheck"),
+                h("span", { text: `Synced as ${status.sync.email}. ` }),
+                h("button", { type: "button", class: "link-button", onClick: () => void openAccount() }, "Manage"),
+              )
+            : h(
+                "p",
+                { class: "welcome-sync muted" },
+                svgIcon("cloud"),
+                h("span", { text: "The same vault, on every device: " }),
+                h("button", { type: "button", class: "link-button", onClick: () => void openAccount() }, "Lados Sync"),
+              ),
         mobile
           ? h("p", {
               class: "welcome-hint muted",

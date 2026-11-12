@@ -199,6 +199,95 @@
   height: 15px;
 }
 
+/* The dedicated "Lados Sync" space. */
+.sync-center-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.sync-center-section:not(:first-child) {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.sync-center-section h3 {
+  font-size: 13px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.sync-center-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sync-vault-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-vault-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.sync-vault-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--text-muted);
+}
+
+.sync-vault-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sync-vault-name {
+  font-weight: 600;
+}
+
+.sync-vault-status {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sync-vault-status.synced {
+  color: var(--success);
+}
+
+.sync-vault-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* Per-vault marker in the recent-vaults list. */
+.recent-sync-badge {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--success);
+}
+
 .spinner {
   flex: none;
   width: 14px;

@@ -104,11 +104,16 @@ export const backend = {
   openExternalUrl: (url: string) => call<void>("open_external_url", { url }),
   getAutostart: () => call<boolean>("get_autostart"),
   setAutostart: (enabled: boolean) => call<void>("set_autostart", { enabled }),
-  syncSignIn: (email: string) => call<AppStatus>("sync_sign_in", { email }),
+  syncSignIn: (email: string, password: string, keyFile: string | null) =>
+    call<AppStatus>("sync_sign_in", { email, password, keyFile }),
   syncSignOut: () => call<AppStatus>("sync_sign_out"),
   syncEnable: () => call<AppStatus>("sync_enable"),
+  syncEnableFile: (path: string, password: string, keyFile: string | null) =>
+    call<AppStatus>("sync_enable_file", { path, password, keyFile }),
   syncDisable: () => call<AppStatus>("sync_disable"),
+  syncDisableFile: (path: string) => call<AppStatus>("sync_disable_file", { path }),
   syncNow: () => call<MergeReport>("sync_now"),
+  syncDeleteAccount: () => call<AppStatus>("sync_delete_account"),
   syncStatus: () => call<SyncView>("sync_status"),
 
   // Folders and icons

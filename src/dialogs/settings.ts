@@ -1,15 +1,13 @@
-import { applyTheme, performSync } from "../app";
+import { applyTheme } from "../app";
 import { extensionInstallDialog } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
-import type { AppStatus, Preferences, Theme } from "../types";
-import { relativeTime } from "../utils/format";
-import { describeChanges, hasChanges } from "./reports";
+import type { Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
-import { promptDialog, showDialog } from "../ui/modal";
-import { toast, toastError } from "../ui/toast";
+import { showDialog } from "../ui/modal";
+import { toastError } from "../ui/toast";
 
 const AUTO_LOCK_CHOICES = [0, 1, 2, 5, 10, 15, 30, 60, 120, 240];
 const CLIPBOARD_CHOICES = [0, 10, 20, 30, 45, 60, 90, 120];
@@ -84,100 +82,6 @@ export async function openSettings(): Promise<void> {
     "Opens in the background so browser autofill is ready without launching it first.",
   );
 
-  // ----- Cloud sync -----
-  const syncContainer = h("div", { class: "stack", style: "gap: 10px" });
-
-  const renderSync = () => {
-    const sync = store.status?.sync;
-    if (!sync?.loggedIn) {
-      syncContainer.replaceChildren(
-        h("p", {
-          class: "muted",
-          text: "Sync your vault across your devices. It is encrypted on this device before it leaves; only your master password opens it.",
-        }),
-        h("button", { type: "button", class: "button", onClick: () => void signIn() }, "Set up sync"),
-      );
-      return;
-    }
-    if (!sync.thisVaultSynced) {
-      syncContainer.replaceChildren(
-        h("p", { class: "muted", text: `Signed in as ${sync.email}. This vault is not synced.` }),
-        h(
-          "div",
-          { class: "browser-choices" },
-          h("button", { type: "button", class: "button primary", onClick: () => void enableVault() }, "Sync this vault"),
-          h("button", { type: "button", class: "button", onClick: () => void signOut() }, "Sign out"),
-        ),
-      );
-      return;
-    }
-    const when = sync.lastSyncedAt ? ` · last synced ${relativeTime(sync.lastSyncedAt)}` : "";
-    syncContainer.replaceChildren(
-      h("p", { class: "muted", text: `Synced as ${sync.email}${when}.` }),
-      h(
-        "div",
-        { class: "browser-choices" },
-        h("button", { type: "button", class: "button primary", onClick: () => void runSync() }, "Sync now"),
-        h("button", { type: "button", class: "button", onClick: () => void disableVault() }, "Stop syncing this vault"),
-      ),
-    );
-  };
-
-  const applyStatus = async (status: AppStatus) => {
-    store.status = status;
-    renderSync();
-  };
-
-  const signIn = async () => {
-    const email = await promptDialog({ title: "Set up sync", label: "Account email", submitLabel: "Continue" });
-    if (email === null) return;
-    try {
-      await applyStatus(await backend.syncSignIn(email));
-      toast("Signed in to sync", "success");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      await applyStatus(await backend.syncSignOut());
-      toast("Signed out");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const enableVault = async () => {
-    try {
-      await applyStatus(await backend.syncEnable());
-      toast("This vault is now synced", "success");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const disableVault = async () => {
-    try {
-      await applyStatus(await backend.syncDisable());
-      toast("Stopped syncing this vault");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const runSync = async () => {
-    try {
-      const report = await performSync();
-      renderSync();
-      toast(hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date", hasChanges(report) ? "success" : "info");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  renderSync();
-
   await showDialog<true>({
     title: "Settings",
     size: "medium",
@@ -211,9 +115,6 @@ export async function openSettings(): Promise<void> {
               "Install the browser extension",
             ),
           ),
-      mobile
-        ? null
-        : h("section", { class: "settings-section" }, h("h3", { text: "Cloud sync (desktop)" }), syncContainer),
       h(
         "section",
         { class: "settings-section" },

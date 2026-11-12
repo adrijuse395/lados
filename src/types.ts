@@ -56,6 +56,10 @@ export interface RecentVault {
   fileName: string;
   keyFile: string | null;
   exists: boolean;
+  /** This vault is set up for cloud sync. */
+  synced: boolean;
+  /** Last successful sync, in Unix milliseconds. */
+  lastSyncedAt: number | null;
 }
 
 export interface AppStatus {
@@ -77,6 +81,17 @@ export interface SyncView {
   serverUrl: string | null;
   thisVaultSynced: boolean;
   /** Last successful sync of the open vault, in Unix milliseconds. */
+  lastSyncedAt: number | null;
+  /** Every vault the user knows about, with its sync state. */
+  vaults: SyncVaultView[];
+}
+
+/** One vault row inside the sync space. */
+export interface SyncVaultView {
+  path: string;
+  fileName: string;
+  keyFile: string | null;
+  synced: boolean;
   lastSyncedAt: number | null;
 }
 

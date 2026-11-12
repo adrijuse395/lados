@@ -1,7 +1,7 @@
 // Everything the user can do with an unlocked vault. Buttons, menus and keyboard shortcuts
 // all call these functions.
 
-import { redraw, refreshSelection, reloadVault, showStatus } from "./app";
+import { redraw, refreshSelection, refreshStatus, reloadVault, showStatus } from "./app";
 import { credentialsDialog } from "./dialogs/credentials";
 import { safeFileName } from "./dialogs/create-vault";
 import { folderSelect, openEntryEditor } from "./dialogs/entry-editor";
@@ -10,6 +10,7 @@ import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
+import { openSyncCenter } from "./dialogs/sync-center";
 import { openUrlMatchTester } from "./dialogs/url-match";
 import { backend, isCredentialError } from "./services/backend";
 import {
@@ -293,6 +294,11 @@ export function selectView(view: typeof store.view): void {
 
 export const showGenerator = () => attempt(() => openGenerator());
 export const showSettings = () => attempt(() => openSettings());
+export const showSyncCenter = () =>
+  attempt(async () => {
+    await openSyncCenter();
+    await refreshStatus();
+  });
 export const showUrlMatchTester = () => attempt(() => openUrlMatchTester());
 
 // ----- Import, export and merge -----

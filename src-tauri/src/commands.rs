@@ -315,6 +315,8 @@ pub fn list_device_vaults(app: AppHandle) -> Result<Vec<views::RecentVaultView>>
             file_name: views::file_name(&path),
             key_file: None,
             exists: true,
+            synced: false,
+            last_synced_at: None,
         });
     }
     vaults.sort_by_key(|a| a.file_name.to_lowercase());
@@ -431,9 +433,15 @@ pub fn sync_status(state: State<'_, AppState>) -> views::SyncView {
     state.status().sync
 }
 
-/// Signs in to (or creates) a sync account, using the same master credentials.
+/// Signs in to (or creates) a sync account from the app start, using the master credentials
+/// of the account (which are those of the vault it syncs).
 #[tauri::command]
-pub async fn sync_sign_in(app: AppHandle, email: String) -> Result<AppStatus> {
+pub async fn sync_sign_in(
+    app: AppHandle,
+    email: String,
+    password: String,
+    key_file: Option<String>,
+) -> Result<AppStatus> {
     #[cfg(feature = "sync")]
     {
         run_blocking(move || {
@@ -442,7 +450,9 @@ pub async fn sync_sign_in(app: AppHandle, email: String) -> Result<AppStatus> {
             if !email.contains('@') {
                 return Err(Error::invalid("Enter a valid email address"));
             }
-            let composite = state.with_vault(|open| Ok(open.composite()))?;
+            let password = Zeroizing::new(password);
+            require_password(&password)?;
+            let composite = composite_key(&password, key_file.as_deref())?;
             let auth = crate::sync::auth_secret(&composite)?;
             let legacy = crate::sync::legacy_auth_secret(&composite);
             let base = crate::sync::DEFAULT_SERVER.to_string();
@@ -464,7 +474,7 @@ pub async fn sync_sign_in(app: AppHandle, email: String) -> Result<AppStatus> {
     }
     #[cfg(not(feature = "sync"))]
     {
-        let _ = (app, email);
+        let _ = (app, email, password, key_file);
         Err(Error::invalid("Sync is not available in this build"))
     }
 }
@@ -538,6 +548,13 @@ pub fn sync_disable(state: State<'_, AppState>) -> Result<AppStatus> {
     Ok(state.status())
 }
 
+/// Stops syncing a vault chosen from the list. The local file and the server copy are kept.
+#[tauri::command(async)]
+pub fn sync_disable_file(state: State<'_, AppState>, path: String) -> Result<AppStatus> {
+    state.update_settings(|settings| settings.forget_synced_vault(&PathBuf::from(path)))?;
+    Ok(state.status())
+}
+
 /// Reconciles the open (synced) vault with the server and reports what changed.
 #[tauri::command]
 pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
@@ -574,6 +591,114 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 }
             })?;
             Ok(report)
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Turns on sync for a vault chosen from the list: opens its own copy with the master
+/// credentials and runs a first sync, without disturbing the vault currently open.
+#[tauri::command]
+pub async fn sync_enable_file(
+    app: AppHandle,
+    path: String,
+    password: String,
+    key_file: Option<String>,
+) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let path = PathBuf::from(path);
+            if !path.is_file() {
+                return Err(Error::invalid(format!("File not found: {}", path.display())));
+            }
+            let (base, token) = {
+                let settings = state.settings();
+                let account = settings
+                    .sync_account
+                    .clone()
+                    .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+                (account.server_url, account.token)
+            };
+
+            // A vault that is already open is synced in place, so the visible session stays valid.
+            let already_open = matches!(&*state.session(), Session::Unlocked(open) if open.path() == path);
+            if already_open {
+                let (vault_name, local_id) =
+                    state.with_vault(|open| Ok((open.vault().name.clone(), open.vault().id.to_string())))?;
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+                state.update_settings(|settings| {
+                    settings.set_synced_vault(crate::settings::SyncedVault {
+                        path: path.clone(),
+                        server_vault_id: server_vault_id.clone(),
+                        local_vault_id: local_id,
+                        last_version: None,
+                        last_synced_at: None,
+                    });
+                })?;
+                let remote = crate::sync::HttpRemote::new(&base, &token);
+                state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id))?;
+            } else {
+                let password = Zeroizing::new(password);
+                require_password(&password)?;
+                let composite = composite_key(&password, key_file.as_deref())?;
+                let mut open = OpenVault::open(path.clone(), composite)?;
+                let vault_name = open.vault().name.clone();
+                let local_id = open.vault().id.to_string();
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+                let remote = crate::sync::HttpRemote::new(&base, &token);
+                open.sync_remote(&remote, &server_vault_id)?;
+                state.update_settings(|settings| {
+                    settings.set_synced_vault(crate::settings::SyncedVault {
+                        path: path.clone(),
+                        server_vault_id,
+                        local_vault_id: local_id,
+                        last_version: None,
+                        last_synced_at: None,
+                    });
+                })?;
+            }
+            state.update_settings(|settings| {
+                if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
+                    entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                }
+            })?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, path, password, key_file);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Deletes the sync account and everything it holds on the server, then signs out locally.
+/// The vaults themselves stay on this device, as local-only.
+#[tauri::command]
+pub async fn sync_delete_account(app: AppHandle) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Not signed in"))?;
+            crate::sync::delete_account(&account.server_url, &account.token)?;
+            state.update_settings(|settings| {
+                settings.sync_account = None;
+                settings.synced_vaults.clear();
+            })?;
+            Ok(state.status())
         })
         .await
     }

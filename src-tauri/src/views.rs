@@ -10,7 +10,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{CustomIcon, Entry, Folder, Icon, UrlMatchKind, Vault};
-use crate::settings::{Preferences, RecentVault};
+use crate::settings::{Preferences, RecentVault, SyncedVault};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -50,6 +50,31 @@ pub struct SyncView {
     pub this_vault_synced: bool,
     /// Last successful sync of the open vault, in Unix milliseconds.
     pub last_synced_at: Option<i64>,
+    /// Every vault the user knows about, with its sync state, for the sync space.
+    pub vaults: Vec<SyncVaultView>,
+}
+
+/// One row of the vault list inside the sync space.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncVaultView {
+    pub path: String,
+    pub file_name: String,
+    pub key_file: Option<String>,
+    pub synced: bool,
+    pub last_synced_at: Option<i64>,
+}
+
+impl SyncVaultView {
+    pub fn new(path: &Path, key_file: Option<&Path>, synced: Option<&SyncedVault>) -> Self {
+        SyncVaultView {
+            path: path_text(path),
+            file_name: file_name(path),
+            key_file: key_file.map(path_text),
+            synced: synced.is_some(),
+            last_synced_at: synced.and_then(|synced| synced.last_synced_at),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -59,15 +84,21 @@ pub struct RecentVaultView {
     pub file_name: String,
     pub key_file: Option<String>,
     pub exists: bool,
+    /// This vault is set up for cloud sync.
+    pub synced: bool,
+    /// Last successful sync, in Unix milliseconds.
+    pub last_synced_at: Option<i64>,
 }
 
-impl From<&RecentVault> for RecentVaultView {
-    fn from(recent: &RecentVault) -> Self {
+impl RecentVaultView {
+    pub fn new(recent: &RecentVault, synced: Option<&SyncedVault>) -> Self {
         RecentVaultView {
             path: path_text(&recent.path),
             file_name: file_name(&recent.path),
             key_file: recent.key_file.as_deref().map(path_text),
             exists: recent.path.is_file(),
+            synced: synced.is_some(),
+            last_synced_at: synced.and_then(|synced| synced.last_synced_at),
         }
     }
 }

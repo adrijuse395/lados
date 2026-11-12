@@ -3,6 +3,7 @@
 //!
 //! Lock order, to rule out deadlocks: `session` before `settings`, and never the other way.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -12,7 +13,7 @@ use crate::clipboard::ClipboardState;
 use crate::error::{Error, Result};
 use crate::session::OpenVault;
 use crate::settings::Settings;
-use crate::views::{AppStatus, RecentVaultView, SessionState, SyncView, file_name, path_text};
+use crate::views::{AppStatus, RecentVaultView, SessionState, SyncVaultView, SyncView, file_name, path_text};
 
 pub enum Session {
     Closed,
@@ -137,17 +138,37 @@ impl AppState {
                 .and_then(|path| settings.key_file_for(path))
                 .map(|key_file| path_text(&key_file)),
             preferences: settings.preferences.clone(),
-            recent_vaults: settings.recent_vaults.iter().map(RecentVaultView::from).collect(),
+            recent_vaults: settings
+                .recent_vaults
+                .iter()
+                .map(|recent| RecentVaultView::new(recent, settings.synced_vault(&recent.path)))
+                .collect(),
             app_version: env!("CARGO_PKG_VERSION"),
             sync: {
                 let account = settings.sync_account.as_ref();
                 let synced = path.as_deref().and_then(|path| settings.synced_vault(path));
+                let mut vaults: Vec<SyncVaultView> = Vec::new();
+                let mut seen: HashSet<&Path> = HashSet::new();
+                for recent in &settings.recent_vaults {
+                    seen.insert(recent.path.as_path());
+                    vaults.push(SyncVaultView::new(
+                        &recent.path,
+                        recent.key_file.as_deref(),
+                        settings.synced_vault(&recent.path),
+                    ));
+                }
+                for synced_vault in &settings.synced_vaults {
+                    if seen.insert(synced_vault.path.as_path()) {
+                        vaults.push(SyncVaultView::new(&synced_vault.path, None, Some(synced_vault)));
+                    }
+                }
                 SyncView {
                     logged_in: account.is_some(),
                     email: account.map(|account| account.email.clone()),
                     server_url: account.map(|account| account.server_url.clone()),
                     this_vault_synced: synced.is_some(),
                     last_synced_at: synced.and_then(|synced| synced.last_synced_at),
+                    vaults,
                 }
             },
         }
