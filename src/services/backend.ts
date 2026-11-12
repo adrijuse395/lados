@@ -15,6 +15,7 @@ import type {
   Preferences,
   RecentVault,
   RevisionSummary,
+  SyncView,
   UrlMatchHit,
   Uuid,
   VaultView,
@@ -103,9 +104,12 @@ export const backend = {
   openExternalUrl: (url: string) => call<void>("open_external_url", { url }),
   getAutostart: () => call<boolean>("get_autostart"),
   setAutostart: (enabled: boolean) => call<void>("set_autostart", { enabled }),
-  syncSetup: (email: string) => call<AppStatus>("sync_setup", { email }),
+  syncSignIn: (email: string) => call<AppStatus>("sync_sign_in", { email }),
+  syncSignOut: () => call<AppStatus>("sync_sign_out"),
+  syncEnable: () => call<AppStatus>("sync_enable"),
+  syncDisable: () => call<AppStatus>("sync_disable"),
   syncNow: () => call<MergeReport>("sync_now"),
-  syncForget: () => call<AppStatus>("sync_forget"),
+  syncStatus: () => call<SyncView>("sync_status"),
 
   // Folders and icons
   createFolder: (parentId: Uuid | null, name: string, icon: Icon | null) =>

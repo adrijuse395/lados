@@ -74,17 +74,25 @@ pub struct RecentVault {
     pub key_file: Option<PathBuf>,
 }
 
+/// A signed-in sync account (user level). Present = the user is "logged in".
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
-pub struct SyncConfig {
+pub struct SyncAccount {
     /// Base URL of the sync server (self-hosters may point elsewhere).
     pub server_url: String,
     pub email: String,
-    /// Bearer token for the sync account. Kept local; never written to the vault.
+    /// Bearer token. Kept local; never written to the vault.
     pub token: String,
-    /// The vault this device is bound to on the server.
-    pub vault_id: String,
-    /// The local vault's own id, so a different vault is never merged by mistake.
+}
+
+/// A vault that is bound to a server vault (vault level).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SyncedVault {
+    pub path: PathBuf,
+    /// The vault's id on the server.
+    pub server_vault_id: String,
+    /// The vault's own id, so a different vault is never merged by mistake.
     pub local_vault_id: String,
     /// Last remote version this device saw.
     pub last_version: Option<u64>,
@@ -98,8 +106,10 @@ pub struct Settings {
     pub preferences: Preferences,
     /// Most recent first.
     pub recent_vaults: Vec<RecentVault>,
-    /// Present only once the user sets up cloud sync.
-    pub sync: Option<SyncConfig>,
+    /// The signed-in sync account, if any.
+    pub sync_account: Option<SyncAccount>,
+    /// Vaults this user has marked as synced.
+    pub synced_vaults: Vec<SyncedVault>,
 }
 
 impl Settings {
@@ -142,6 +152,19 @@ impl Settings {
             .iter()
             .find(|recent| recent.path == path)
             .and_then(|recent| recent.key_file.clone())
+    }
+
+    pub fn synced_vault(&self, path: &Path) -> Option<&SyncedVault> {
+        self.synced_vaults.iter().find(|synced| synced.path == path)
+    }
+
+    pub fn set_synced_vault(&mut self, synced: SyncedVault) {
+        self.synced_vaults.retain(|existing| existing.path != synced.path);
+        self.synced_vaults.push(synced);
+    }
+
+    pub fn forget_synced_vault(&mut self, path: &Path) {
+        self.synced_vaults.retain(|synced| synced.path != path);
     }
 }
 

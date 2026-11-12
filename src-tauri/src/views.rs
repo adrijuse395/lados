@@ -34,17 +34,21 @@ pub struct AppStatus {
     pub preferences: Preferences,
     pub recent_vaults: Vec<RecentVaultView>,
     pub app_version: &'static str,
-    /// Cloud sync account, when the user has set one up. Never includes the token.
-    pub sync: Option<SyncView>,
+    /// Cloud sync state: whether the user is signed in and whether this vault syncs.
+    pub sync: SyncView,
 }
 
+/// The sync state shown to the interface. Never includes the token.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncView {
-    pub server_url: String,
-    pub email: String,
-    pub vault_id: String,
-    /// Last successful sync, in Unix milliseconds.
+    /// The user is signed in to a sync account.
+    pub logged_in: bool,
+    pub email: Option<String>,
+    pub server_url: Option<String>,
+    /// The vault that is currently open is marked as synced.
+    pub this_vault_synced: bool,
+    /// Last successful sync of the open vault, in Unix milliseconds.
     pub last_synced_at: Option<i64>,
 }
 

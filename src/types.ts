@@ -66,16 +66,17 @@ export interface AppStatus {
   preferences: Preferences;
   recentVaults: RecentVault[];
   appVersion: string;
-  /** Cloud sync account, when set up. */
-  sync: SyncView | null;
+  /** Cloud sync state. */
+  sync: SyncView;
 }
 
-/** Cloud sync account bound to the current vault (never the token). */
+/** Cloud sync state: whether the user is signed in and whether the open vault syncs. */
 export interface SyncView {
-  serverUrl: string;
-  email: string;
-  vaultId: string;
-  /** Last successful sync, in Unix milliseconds. */
+  loggedIn: boolean;
+  email: string | null;
+  serverUrl: string | null;
+  thisVaultSynced: boolean;
+  /** Last successful sync of the open vault, in Unix milliseconds. */
   lastSyncedAt: number | null;
 }
 

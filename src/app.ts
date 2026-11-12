@@ -6,7 +6,7 @@ import { renderWelcome } from "./screens/welcome";
 import { clearAutofillCache, syncAutofillCache } from "./services/autofill-bridge";
 import { BackendError, backend } from "./services/backend";
 import { resetVaultState, setVault, store } from "./state/store";
-import type { AppStatus, Theme } from "./types";
+import type { AppStatus, MergeReport, Theme } from "./types";
 import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
@@ -35,6 +35,37 @@ darkScheme.addEventListener("change", () => applyTheme(themePreference));
 async function loadVault(): Promise<void> {
   setVault(await backend.getVaultView());
   store.searchResults = store.query.trim() ? new Set(await backend.searchEntries(store.query)) : null;
+  scheduleSync();
+}
+
+// ----- Cloud sync (reconcile on open, push after a change) -----
+
+let syncTimer: number | undefined;
+let syncRunning = false;
+
+/** Reconciles the open vault with the server when it is signed in and marked as synced. */
+export function scheduleSync(): void {
+  const sync = store.status?.sync;
+  if (!sync?.loggedIn || !sync.thisVaultSynced || syncRunning) return;
+  window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(() => {
+    void performSync().catch(() => undefined);
+  }, 900);
+}
+
+/** Runs one sync pass and refreshes the interface. Throws on failure. */
+export async function performSync(): Promise<MergeReport> {
+  if (syncRunning) throw new Error("A sync is already in progress");
+  syncRunning = true;
+  try {
+    const report = await backend.syncNow();
+    store.status = await backend.getStatus();
+    await loadVault();
+    redraw();
+    return report;
+  } finally {
+    syncRunning = false;
+  }
 }
 
 /** Shows the screen that matches the session state reported by the core. */

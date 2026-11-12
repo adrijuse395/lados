@@ -1,9 +1,9 @@
-import { applyTheme, reloadVault } from "../app";
+import { applyTheme, performSync } from "../app";
 import { extensionInstallDialog } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
-import type { Preferences, Theme } from "../types";
+import type { AppStatus, Preferences, Theme } from "../types";
 import { describeChanges, hasChanges } from "./reports";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
@@ -97,33 +97,79 @@ export async function openSettings(): Promise<void> {
   const syncContainer = h("div", { class: "stack", style: "gap: 10px" });
 
   const renderSync = () => {
-    const sync = store.status?.sync ?? null;
-    if (sync) {
-      const when = sync.lastSyncedAt ? ` · last synced ${relativeTime(sync.lastSyncedAt)}` : "";
+    const sync = store.status?.sync;
+    if (!sync?.loggedIn) {
       syncContainer.replaceChildren(
-        h("p", { class: "muted", text: `Synced as ${sync.email}${when}.` }),
+        h("p", {
+          class: "muted",
+          text: "Sync your vault across your devices. It is encrypted on this device before it leaves; only your master password opens it.",
+        }),
+        h("button", { type: "button", class: "button", onClick: () => void signIn() }, "Set up sync"),
+      );
+      return;
+    }
+    if (!sync.thisVaultSynced) {
+      syncContainer.replaceChildren(
+        h("p", { class: "muted", text: `Signed in as ${sync.email}. This vault is not synced.` }),
         h(
           "div",
           { class: "browser-choices" },
-          h("button", { type: "button", class: "button primary", onClick: () => void runSync() }, "Sync now"),
-          h("button", { type: "button", class: "button", onClick: () => void forgetSync() }, "Turn off sync"),
+          h("button", { type: "button", class: "button primary", onClick: () => void enableVault() }, "Sync this vault"),
+          h("button", { type: "button", class: "button", onClick: () => void signOut() }, "Sign out"),
         ),
       );
-    } else {
-      syncContainer.replaceChildren(
-        h("p", { class: "muted", text: "Keep this vault in sync across your devices. It uses the same master password." }),
-        h("button", { type: "button", class: "button", onClick: () => void setupSync() }, "Set up sync"),
-      );
+      return;
+    }
+    const when = sync.lastSyncedAt ? ` · last synced ${relativeTime(sync.lastSyncedAt)}` : "";
+    syncContainer.replaceChildren(
+      h("p", { class: "muted", text: `Synced as ${sync.email}${when}.` }),
+      h(
+        "div",
+        { class: "browser-choices" },
+        h("button", { type: "button", class: "button primary", onClick: () => void runSync() }, "Sync now"),
+        h("button", { type: "button", class: "button", onClick: () => void disableVault() }, "Stop syncing this vault"),
+      ),
+    );
+  };
+
+  const applyStatus = async (status: AppStatus) => {
+    store.status = status;
+    renderSync();
+  };
+
+  const signIn = async () => {
+    const email = await promptDialog({ title: "Set up sync", label: "Account email", submitLabel: "Continue" });
+    if (email === null) return;
+    try {
+      await applyStatus(await backend.syncSignIn(email));
+      toast("Signed in to sync", "success");
+    } catch (error) {
+      toastError(error);
     }
   };
 
-  const setupSync = async () => {
-    const email = await promptDialog({ title: "Set up cloud sync", label: "Account email", submitLabel: "Continue" });
-    if (email === null) return;
+  const signOut = async () => {
     try {
-      store.status = await backend.syncSetup(email);
-      renderSync();
-      toast("Cloud sync is ready", "success");
+      await applyStatus(await backend.syncSignOut());
+      toast("Signed out");
+    } catch (error) {
+      toastError(error);
+    }
+  };
+
+  const enableVault = async () => {
+    try {
+      await applyStatus(await backend.syncEnable());
+      toast("This vault is now synced", "success");
+    } catch (error) {
+      toastError(error);
+    }
+  };
+
+  const disableVault = async () => {
+    try {
+      await applyStatus(await backend.syncDisable());
+      toast("Stopped syncing this vault");
     } catch (error) {
       toastError(error);
     }
@@ -131,21 +177,9 @@ export async function openSettings(): Promise<void> {
 
   const runSync = async () => {
     try {
-      const report = await backend.syncNow();
-      store.status = await backend.getStatus();
-      await reloadVault();
+      const report = await performSync();
       renderSync();
       toast(hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date", hasChanges(report) ? "success" : "info");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const forgetSync = async () => {
-    try {
-      store.status = await backend.syncForget();
-      renderSync();
-      toast("Cloud sync turned off on this device");
     } catch (error) {
       toastError(error);
     }

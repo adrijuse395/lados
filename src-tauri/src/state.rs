@@ -139,12 +139,17 @@ impl AppState {
             preferences: settings.preferences.clone(),
             recent_vaults: settings.recent_vaults.iter().map(RecentVaultView::from).collect(),
             app_version: env!("CARGO_PKG_VERSION"),
-            sync: settings.sync.as_ref().map(|sync| SyncView {
-                server_url: sync.server_url.clone(),
-                email: sync.email.clone(),
-                vault_id: sync.vault_id.clone(),
-                last_synced_at: sync.last_synced_at,
-            }),
+            sync: {
+                let account = settings.sync_account.as_ref();
+                let synced = path.as_deref().and_then(|path| settings.synced_vault(path));
+                SyncView {
+                    logged_in: account.is_some(),
+                    email: account.map(|account| account.email.clone()),
+                    server_url: account.map(|account| account.server_url.clone()),
+                    this_vault_synced: synced.is_some(),
+                    last_synced_at: synced.and_then(|synced| synced.last_synced_at),
+                }
+            },
         }
     }
 
