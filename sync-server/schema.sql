@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS vaults (
   id          TEXT PRIMARY KEY,
   account_id  TEXT NOT NULL,
-  name        TEXT NOT NULL,
+  name        TEXT NOT NULL,                   -- legacy plaintext label ('' for new vaults)
+  name_cipher TEXT,                            -- encrypted label: the server cannot read it
   vault_uuid  TEXT,                            -- the vault's own id: its identity
   size        INTEGER NOT NULL DEFAULT 0,      -- current blob size, for the account quota
   version     INTEGER NOT NULL DEFAULT 0,

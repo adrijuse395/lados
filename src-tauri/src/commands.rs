@@ -455,6 +455,28 @@ pub fn sync_status(state: State<'_, AppState>) -> views::SyncView {
     state.status().sync
 }
 
+/// The label key used to encrypt vault names for the server, if it is remembered.
+#[cfg(feature = "sync")]
+fn stored_label_key(state: &AppState) -> Option<SecretKey> {
+    state
+        .settings()
+        .sync_label_key
+        .as_ref()
+        .and_then(|value| crypto::secret_from_base64(value))
+}
+
+/// The label key, derived from the master credentials when it is not remembered yet.
+#[cfg(feature = "sync")]
+fn label_key_for(state: &AppState, composite: &SecretKey, email: &str) -> Result<SecretKey> {
+    if let Some(key) = stored_label_key(state) {
+        return Ok(key);
+    }
+    let key = crypto::label_key(composite, email)?;
+    let encoded = crypto::secret_to_base64(&key);
+    state.update_settings(|settings| settings.sync_label_key = Some(encoded))?;
+    Ok(key)
+}
+
 /// Signs in to (or creates) a sync account from the app start, using the master credentials
 /// of the account (which are those of the vault it syncs).
 #[tauri::command]
@@ -478,9 +500,11 @@ pub async fn sync_sign_in(
             let auth = crate::sync::auth_secret(&composite, &email)?;
             let previous = crate::sync::previous_auth_secret(&composite)?;
             let legacy = crate::sync::legacy_auth_secret(&composite);
+            let label = crypto::secret_to_base64(&crypto::label_key(&composite, &email)?);
             let base = crate::sync::DEFAULT_SERVER.to_string();
             let token = crate::sync::login(&base, &email, &auth, &previous, &legacy)?;
             state.update_settings(|settings| {
+                settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {
                     server_url: base,
                     email,
@@ -519,9 +543,11 @@ pub async fn sync_register(
             require_password(&password)?;
             let composite = composite_key(&password, key_file.as_deref())?;
             let auth = crate::sync::auth_secret(&composite, &email)?;
+            let label = crypto::secret_to_base64(&crypto::label_key(&composite, &email)?);
             let base = crate::sync::DEFAULT_SERVER.to_string();
             let token = crate::sync::register(&base, &email, &auth)?;
             state.update_settings(|settings| {
+                settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {
                     server_url: base,
                     email,
@@ -569,7 +595,16 @@ pub async fn sync_enable(app: AppHandle) -> Result<AppStatus> {
                 (account.server_url, account.token)
             };
 
-            let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
+            let label = {
+                let composite = state.with_vault(|open| Ok(open.composite()))?;
+                let email = {
+                    let settings = state.settings();
+                    settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
+                };
+                label_key_for(&state, &composite, &email)?
+            };
+            let name_cipher = crypto::seal(&label, &vault_name)?;
+            let server_vault_id = crate::sync::ensure_vault(&base, &token, &local_id, &name_cipher)?;
             state.update_settings(|settings| {
                 settings.set_synced_vault(crate::settings::SyncedVault {
                     path: path.clone(),
@@ -693,7 +728,18 @@ pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<crate::sync::CloudV
                 .sync_account
                 .clone()
                 .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
-            crate::sync::list_vaults(&account.server_url, &account.token)
+            let mut vaults = crate::sync::list_vaults(&account.server_url, &account.token)?;
+            // Names arrive encrypted; reveal them with the remembered label key.
+            if let Some(key) = stored_label_key(&state) {
+                for vault in &mut vaults {
+                    if let Some(cipher) = vault.name_cipher.clone()
+                        && let Ok(name) = crypto::open(&key, &cipher)
+                    {
+                        vault.name = name;
+                    }
+                }
+            }
+            Ok(vaults)
         })
         .await
     }
@@ -888,7 +934,16 @@ pub async fn sync_enable_file(
             if already_open {
                 let (vault_name, local_id) =
                     state.with_vault(|open| Ok((open.vault().name.clone(), open.vault().id.to_string())))?;
-                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
+                let label = {
+                    let composite = state.with_vault(|open| Ok(open.composite()))?;
+                    let email = {
+                        let settings = state.settings();
+                        settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
+                    };
+                    label_key_for(&state, &composite, &email)?
+                };
+                let name_cipher = crypto::seal(&label, &vault_name)?;
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &local_id, &name_cipher)?;
                 state.update_settings(|settings| {
                     settings.set_synced_vault(crate::settings::SyncedVault {
                         path: path.clone(),
@@ -906,10 +961,16 @@ pub async fn sync_enable_file(
                 let password = Zeroizing::new(password);
                 require_password(&password)?;
                 let composite = composite_key(&password, key_file.as_deref())?;
+                let email = {
+                    let settings = state.settings();
+                    settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
+                };
+                let label = label_key_for(&state, &composite, &email)?;
                 let mut open = OpenVault::open(path.clone(), composite)?;
                 let vault_name = open.vault().name.clone();
                 let local_id = open.vault().id.to_string();
-                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
+                let name_cipher = crypto::seal(&label, &vault_name)?;
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &local_id, &name_cipher)?;
                 let remote = crate::sync::HttpRemote::new(&base, &token);
                 let (_report, stored) = open.sync_remote(&remote, &server_vault_id, None)?;
                 version = stored;

@@ -210,7 +210,7 @@ async function me(env: Env, account: AccountRow): Promise<Response> {
 
 async function listVaults(env: Env, account: AccountRow): Promise<Response> {
   const { results } = await env.DB.prepare(
-    "SELECT id, name, vault_uuid, version, updated_at FROM vaults WHERE account_id = ? ORDER BY name",
+    "SELECT id, name, name_cipher, vault_uuid, version, updated_at FROM vaults WHERE account_id = ? ORDER BY updated_at DESC",
   )
     .bind(account.id)
     .all();
@@ -218,28 +218,28 @@ async function listVaults(env: Env, account: AccountRow): Promise<Response> {
 }
 
 async function createVault(env: Env, account: AccountRow, request: Request): Promise<Response> {
-  const body = await readJson<{ name?: string; vaultUuid?: string }>(request);
-  const name = (body?.name || "Vault").slice(0, 200);
+  const body = await readJson<{ vaultUuid?: string; nameCipher?: string }>(request);
   const vaultUuid = body?.vaultUuid?.slice(0, 100) || null;
+  const nameCipher = body?.nameCipher?.slice(0, 5000) || null;
 
   // The vault's own id is its identity: reuse the existing cloud copy instead of making
   // a second one for the same vault.
   if (vaultUuid) {
     const existing = await env.DB.prepare(
-      "SELECT id, name, version FROM vaults WHERE account_id = ? AND vault_uuid = ?",
+      "SELECT id, version FROM vaults WHERE account_id = ? AND vault_uuid = ?",
     )
       .bind(account.id, vaultUuid)
-      .first<{ id: string; name: string; version: number }>();
-    if (existing) return json({ id: existing.id, name: existing.name, version: existing.version });
+      .first<{ id: string; version: number }>();
+    if (existing) return json({ id: existing.id, version: existing.version });
   }
 
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO vaults (id, account_id, name, vault_uuid, version, updated_at) VALUES (?, ?, ?, ?, 0, ?)",
+    "INSERT INTO vaults (id, account_id, name, name_cipher, vault_uuid, version, updated_at) VALUES (?, ?, '', ?, ?, 0, ?)",
   )
-    .bind(id, account.id, name, vaultUuid, Date.now())
+    .bind(id, account.id, nameCipher, vaultUuid, Date.now())
     .run();
-  return json({ id, name, version: 0 });
+  return json({ id, version: 0 });
 }
 
 /// Loads a vault row owned by the account, or null.

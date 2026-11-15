@@ -2,6 +2,8 @@
 //! vault, a file or an entry is.
 
 use argon2::{Algorithm, Argon2, Params, Version};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use rand::TryRng;
@@ -162,6 +164,54 @@ pub fn previous_auth_secret(composite: &SecretKey) -> Result<String> {
     let salt: [u8; SALT_LEN] = sha256(b"lados-sync-auth-salt-v1");
     let secret = derive_key(composite, &salt, SYNC_AUTH_KDF)?;
     Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// Key that encrypts the vault labels shared with the server, so it only ever sees ciphertext.
+/// Salted per account, and stretched with Argon2id so guessing it costs a full run.
+pub fn label_key(composite: &SecretKey, account: &str) -> Result<SecretKey> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"lados-sync-label-v1:");
+    hasher.update(account.as_bytes());
+    let digest = hasher.finalize();
+    let mut salt = [0u8; SALT_LEN];
+    salt.copy_from_slice(&digest);
+    derive_key(composite, &salt, SYNC_AUTH_KDF)
+}
+
+/// Encrypts a short text (a vault label) for storage on the server, as base64(nonce ‖ cipher).
+pub fn seal(key: &SecretKey, plaintext: &str) -> Result<String> {
+    let nonce: [u8; NONCE_LEN] = random_bytes()?;
+    let sealed = encrypt(key, &nonce, plaintext.as_bytes(), b"")?;
+    let mut out = Vec::with_capacity(NONCE_LEN + sealed.len());
+    out.extend_from_slice(&nonce);
+    out.extend_from_slice(&sealed);
+    Ok(BASE64.encode(out))
+}
+
+/// Reverses [`seal`].
+pub fn open(key: &SecretKey, sealed: &str) -> Result<String> {
+    let raw = BASE64.decode(sealed).map_err(|_| Error::Corrupted)?;
+    if raw.len() <= NONCE_LEN {
+        return Err(Error::Corrupted);
+    }
+    let mut nonce = [0u8; NONCE_LEN];
+    nonce.copy_from_slice(&raw[..NONCE_LEN]);
+    let plaintext = decrypt(key, &nonce, &raw[NONCE_LEN..], b"")?;
+    String::from_utf8(plaintext.to_vec()).map_err(|_| Error::Corrupted)
+}
+
+pub fn secret_to_base64(key: &SecretKey) -> String {
+    BASE64.encode(&key[..])
+}
+
+pub fn secret_from_base64(value: &str) -> Option<SecretKey> {
+    let raw = BASE64.decode(value).ok()?;
+    if raw.len() != KEY_LEN {
+        return None;
+    }
+    let mut key = Zeroizing::new([0u8; KEY_LEN]);
+    key.copy_from_slice(&raw);
+    Some(key)
 }
 
 /// Encrypts and authenticates `plaintext` with XChaCha20-Poly1305.

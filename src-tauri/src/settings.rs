@@ -116,6 +116,8 @@ pub struct Settings {
     pub sync_account: Option<SyncAccount>,
     /// Vaults this user has marked as synced.
     pub synced_vaults: Vec<SyncedVault>,
+    /// Key that encrypts vault labels for the server (base64). Local only; not security-critical.
+    pub sync_label_key: Option<String>,
 }
 
 impl Settings {

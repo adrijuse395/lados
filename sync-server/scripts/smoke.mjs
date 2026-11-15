@@ -79,19 +79,23 @@ r = await call("GET", "/me", { token: tokenA });
 check("me returns the active plan", r.status === 200 && r.json?.plan === "active");
 
 // ----- Cloud vaults keyed by the vault's own uuid -----
-r = await call("POST", "/vaults", { token: tokenA, body: { name: "Alpha", vaultUuid: uuidA } });
+r = await call("POST", "/vaults", { token: tokenA, body: { vaultUuid: uuidA, nameCipher: "cipher-alpha" } });
 const vaultA = r.json?.id;
 check("create a cloud vault", r.status === 200 && typeof vaultA === "string");
 
-r = await call("POST", "/vaults", { token: tokenA, body: { name: "Alpha (renamed)", vaultUuid: uuidA } });
+r = await call("POST", "/vaults", { token: tokenA, body: { vaultUuid: uuidA, nameCipher: "cipher-alpha" } });
 check("the same vault uuid maps to the same cloud vault", r.json?.id === vaultA, `got ${r.json?.id}`);
 
-r = await call("POST", "/vaults", { token: tokenA, body: { name: "Beta", vaultUuid: uuidB } });
+r = await call("POST", "/vaults", { token: tokenA, body: { vaultUuid: uuidB, nameCipher: "cipher-beta" } });
 const vaultB = r.json?.id;
 check("a different uuid creates its own cloud vault", r.status === 200 && vaultB && vaultB !== vaultA);
 
 r = await call("GET", "/vaults", { token: tokenA });
 check("the account has two cloud vaults", r.status === 200 && r.json?.vaults?.length === 2, `got ${r.json?.vaults?.length}`);
+check(
+  "the encrypted label is stored and returned",
+  Array.isArray(r.json?.vaults) && r.json.vaults.some((vault) => vault.name_cipher === "cipher-alpha"),
+);
 
 // ----- Upload / download / concurrency -----
 r = await call("PUT", `/vaults/${vaultA}`, { token: tokenA, ifMatch: 0, raw: new Uint8Array(700) });

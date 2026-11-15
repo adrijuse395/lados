@@ -359,7 +359,9 @@ device and never transmitted.
   limitation, to be closed with email verification.
 
 ### A breach of D1/R2, a stolen token, or a malicious operator
-- Yields **metadata** (email, vault name, size, timestamps) and **ciphertext** — never plaintext.
+- Yields **metadata** (account email, vault sizes, timestamps) and **ciphertext** — never
+  plaintext. Vault **names are stored only as ciphertext**, encrypted with an account label key
+  that stays on the device, so they cannot be read from the server.
 - **Passwords are at risk only if a blob leaks *and* the master password is weak.** That is
   inherent to zero-knowledge; it is mitigated by a strong KDF, enforced strong account
   passwords, and minimising the chance of any leak.
@@ -377,7 +379,7 @@ device and never transmitted.
 
 ### Known limitations / next steps
 1. **OPAQUE login** — removes the password-equivalent from the wire.
-2. **Metadata** — encrypt or drop the plaintext vault name.
+2. **Remaining metadata** — the account email, vault sizes and timestamps are still visible.
 3. **Email verification** — removes enumeration and enables billing.
 4. **Password rotation** — changing the account password must re-key the cloud vaults; not
    built yet. (Sessions can already be revoked: “Sign out other devices”.)

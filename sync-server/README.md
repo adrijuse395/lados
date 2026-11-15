@@ -18,7 +18,7 @@ all merging happens on the user's device.
 | POST | `/auth/login` | `{ email, authSecret, legacyAuthSecret? }` → `{ token, plan }` |
 | GET | `/me` | account + plan |
 | GET | `/vaults` | list vaults |
-| POST | `/vaults` | `{ name }` → create a vault |
+| POST | `/vaults` | `{ vaultUuid, nameCipher }` → create a vault (name stored encrypted) |
 | GET | `/vaults/:id` | `{ version, blob }` (base64) |
 | PUT | `/vaults/:id` | raw encrypted bytes + `If-Match: <version>` → `{ version }` (409 on conflict) |
 | DELETE | `/vaults/:id` | remove a vault (and its blobs) |

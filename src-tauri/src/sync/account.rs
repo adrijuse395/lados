@@ -81,11 +81,10 @@ pub fn login(base: &str, email: &str, auth_secret: &str, previous_secret: &str, 
 }
 
 /// Returns the server vault for this vault identity, creating it if the account has none.
-/// Keyed by the vault's own id, so different vaults get different cloud copies and the
-/// same vault always maps back to the same one.
-pub fn ensure_vault(base: &str, token: &str, name: &str, vault_uuid: &str) -> Result<String> {
+/// The label is sent only as ciphertext, so the server never learns the vault's name.
+pub fn ensure_vault(base: &str, token: &str, vault_uuid: &str, name_cipher: &str) -> Result<String> {
     let root = base.trim_end_matches('/');
-    let body = json!({ "name": name, "vaultUuid": vault_uuid });
+    let body = json!({ "vaultUuid": vault_uuid, "nameCipher": name_cipher });
     let created = http::send(Method::POST, &format!("{root}/vaults"), Some(token), None, Some(&body), None)?;
     created
         .value
@@ -112,6 +111,7 @@ pub fn delete_account(base: &str, token: &str) -> Result<()> {
 pub struct CloudVault {
     pub id: String,
     pub name: String,
+    pub name_cipher: Option<String>,
     pub vault_uuid: Option<String>,
     pub version: u64,
     pub updated_at: i64,
@@ -136,6 +136,7 @@ pub fn list_vaults(base: &str, token: &str) -> Result<Vec<CloudVault>> {
         .map(|vault| CloudVault {
             id: vault.get("id").and_then(serde_json::Value::as_str).unwrap_or_default().to_string(),
             name: vault.get("name").and_then(serde_json::Value::as_str).unwrap_or_default().to_string(),
+            name_cipher: vault.get("name_cipher").and_then(serde_json::Value::as_str).map(str::to_string),
             vault_uuid: vault.get("vault_uuid").and_then(serde_json::Value::as_str).map(str::to_string),
             version: vault.get("version").and_then(serde_json::Value::as_u64).unwrap_or(0),
             updated_at: vault.get("updated_at").and_then(serde_json::Value::as_i64).unwrap_or(0),
