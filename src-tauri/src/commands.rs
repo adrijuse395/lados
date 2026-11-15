@@ -185,13 +185,29 @@ fn vaults_directory(app: &AppHandle) -> Result<PathBuf> {
     }
     #[cfg(not(mobile))]
     {
-        let base = app
-            .path()
-            .app_data_dir()
-            .map_err(|error| Error::System(error.to_string()))?;
-        let dir = base.join("vaults");
+        // A folder the user can see, back up and put in a cloud drive — not app-private storage.
+        let custom = app.state::<AppState>().settings().preferences.vaults_folder.clone();
+        let dir = match custom {
+            Some(folder) if !folder.trim().is_empty() => PathBuf::from(folder.trim()),
+            _ => default_vaults_directory(app)?,
+        };
         std::fs::create_dir_all(&dir).map_err(|error| Error::System(error.to_string()))?;
         Ok(dir)
+    }
+}
+
+/// The standard vaults folder when the user has not chosen another one.
+#[cfg(not(mobile))]
+fn default_vaults_directory(app: &AppHandle) -> Result<PathBuf> {
+    match app.path().document_dir() {
+        Ok(documents) => Ok(documents.join("Lados")),
+        Err(_) => {
+            let base = app
+                .path()
+                .app_data_dir()
+                .map_err(|error| Error::System(error.to_string()))?;
+            Ok(base.join("vaults"))
+        }
     }
 }
 
@@ -290,6 +306,12 @@ pub fn suggested_vault_path(app: AppHandle, name: String) -> Result<String> {
         storage::FILE_EXTENSION
     ));
     Ok(views::path_text(&path))
+}
+
+/// The folder new vaults are created in and downloads land in.
+#[tauri::command]
+pub fn vaults_folder(app: AppHandle) -> Result<String> {
+    Ok(views::path_text(&vaults_directory(&app)?))
 }
 
 /// Vaults already stored in the app folder (created or imported on this device).
@@ -453,14 +475,52 @@ pub async fn sync_sign_in(
             let password = Zeroizing::new(password);
             require_password(&password)?;
             let composite = composite_key(&password, key_file.as_deref())?;
-            let auth = crate::sync::auth_secret(&composite)?;
+            let auth = crate::sync::auth_secret(&composite, &email)?;
+            let previous = crate::sync::previous_auth_secret(&composite)?;
             let legacy = crate::sync::legacy_auth_secret(&composite);
             let base = crate::sync::DEFAULT_SERVER.to_string();
-            let token = match crate::sync::login(&base, &email, &auth, &legacy) {
-                Ok(token) => token,
-                Err(Error::InvalidCredentials) => crate::sync::register(&base, &email, &auth)?,
-                Err(error) => return Err(error),
-            };
+            let token = crate::sync::login(&base, &email, &auth, &previous, &legacy)?;
+            state.update_settings(|settings| {
+                settings.sync_account = Some(crate::settings::SyncAccount {
+                    server_url: base,
+                    email,
+                    token,
+                });
+            })?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, email, password, key_file);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Creates a new sync account. The account password must be very strong (enforced by the
+/// interface, which is the only place that sees it). Fails if the email is already used.
+#[tauri::command]
+pub async fn sync_register(
+    app: AppHandle,
+    email: String,
+    password: String,
+    key_file: Option<String>,
+) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let email = email.trim().to_lowercase();
+            if !email.contains('@') {
+                return Err(Error::invalid("Enter a valid email address"));
+            }
+            let password = Zeroizing::new(password);
+            require_password(&password)?;
+            let composite = composite_key(&password, key_file.as_deref())?;
+            let auth = crate::sync::auth_secret(&composite, &email)?;
+            let base = crate::sync::DEFAULT_SERVER.to_string();
+            let token = crate::sync::register(&base, &email, &auth)?;
             state.update_settings(|settings| {
                 settings.sync_account = Some(crate::settings::SyncAccount {
                     server_url: base,
@@ -509,22 +569,24 @@ pub async fn sync_enable(app: AppHandle) -> Result<AppStatus> {
                 (account.server_url, account.token)
             };
 
-            let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+            let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
             state.update_settings(|settings| {
                 settings.set_synced_vault(crate::settings::SyncedVault {
                     path: path.clone(),
                     server_vault_id: server_vault_id.clone(),
                     local_vault_id: local_id,
+                    name: Some(vault_name),
                     last_version: None,
                     last_synced_at: None,
                 });
             })?;
 
             let remote = crate::sync::HttpRemote::new(&base, &token);
-            state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id))?;
+            let (_report, version) = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, None))?;
             state.update_settings(|settings| {
                 if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
                     entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                    entry.last_version = Some(version);
                 }
             })?;
             Ok(state.status())
@@ -555,6 +617,137 @@ pub fn sync_disable_file(state: State<'_, AppState>, path: String) -> Result<App
     Ok(state.status())
 }
 
+/// Stops syncing a vault (by its own id), removing every local copy's binding.
+#[tauri::command(async)]
+pub fn sync_disable_vault(state: State<'_, AppState>, local_vault_id: String) -> Result<AppStatus> {
+    state.update_settings(|settings| {
+        settings
+            .synced_vaults
+            .retain(|entry| entry.local_vault_id != local_vault_id);
+    })?;
+    Ok(state.status())
+}
+
+/// Lists the cloud vaults of the signed-in account.
+#[tauri::command]
+pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<crate::sync::CloudVault>> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+            crate::sync::list_vaults(&account.server_url, &account.token)
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// The file name a downloaded vault always gets: its own name, which the user cannot change.
+fn vault_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if "\\/:*?\"<>|".contains(c) { '-' } else { c })
+        .collect();
+    let stem = cleaned.trim().trim_matches('.').trim();
+    let stem = if stem.is_empty() { "Vault" } else { stem };
+    format!("{stem}.{}", storage::FILE_EXTENSION)
+}
+
+/// A free path inside `dir` for `file_name`, adding " (2)", " (3)"… when it is taken.
+fn unique_in_dir(dir: &Path, file_name: &str) -> PathBuf {
+    let candidate = dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Vault".into());
+    let extension = path
+        .extension()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| storage::FILE_EXTENSION.to_string());
+    for index in 2..10_000 {
+        let candidate = dir.join(format!("{stem} ({index}).{extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{stem}-{}.{}", Uuid::new_v4(), extension))
+}
+
+/// Downloads a cloud vault onto this device and binds it. The user chooses the folder; the
+/// file is named after the vault, which (being the vault's own name) is not user-editable.
+#[tauri::command]
+pub async fn sync_download(
+    app: AppHandle,
+    server_vault_id: String,
+    folder: String,
+    password: String,
+    key_file: Option<String>,
+) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        use crate::sync::Remote;
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+            let password = Zeroizing::new(password);
+            require_password(&password)?;
+            let composite = composite_key(&password, key_file.as_deref())?;
+
+            let remote = crate::sync::HttpRemote::new(&account.server_url, &account.token);
+            let remote_vault = remote
+                .get(&server_vault_id)?
+                .ok_or_else(|| Error::invalid("This vault has no cloud copy yet"))?;
+            // Deriving the key from the blob's own header is what lets any device open it.
+            let header = storage::Header::parse(&remote_vault.bytes)?;
+            let key = VaultKey::for_header(&composite, &header)?;
+            let vault = storage::decrypt_vault(&remote_vault.bytes, &key)?;
+
+            let dir = PathBuf::from(folder);
+            if !dir.is_dir() {
+                return Err(Error::invalid("Choose a folder that exists"));
+            }
+            let dest = unique_in_dir(&dir, &vault_file_name(&vault.name));
+            storage::write_atomic(&dest, &remote_vault.bytes)?;
+
+            state.update_settings(|settings| {
+                settings.set_synced_vault(crate::settings::SyncedVault {
+                    path: dest.clone(),
+                    server_vault_id,
+                    local_vault_id: vault.id.to_string(),
+                    name: Some(vault.name.clone()),
+                    last_version: Some(remote_vault.version),
+                    last_synced_at: Some(chrono::Utc::now().timestamp_millis()),
+                });
+                settings.remember_vault(&dest, key_file_path(key_file.as_deref()).as_deref());
+            })?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, server_vault_id, folder, password, key_file);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
 /// Reconciles the open (synced) vault with the server and reports what changed.
 #[tauri::command]
 pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
@@ -567,7 +760,7 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 .path()
                 .map(Path::to_path_buf)
                 .ok_or(Error::NoVaultSelected)?;
-            let (base, token, server_vault_id, local_id) = {
+            let (base, token, server_vault_id, local_id, last_version) = {
                 let settings = state.settings();
                 let account = settings
                     .sync_account
@@ -577,17 +770,26 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                     .synced_vault(&path)
                     .cloned()
                     .ok_or_else(|| Error::invalid("This vault is not set up for sync"))?;
-                (account.server_url, account.token, synced.server_vault_id, synced.local_vault_id)
+                (
+                    account.server_url,
+                    account.token,
+                    synced.server_vault_id,
+                    synced.local_vault_id,
+                    synced.last_version,
+                )
             };
             let open_id = state.with_vault(|open| Ok(open.vault().id.to_string()))?;
             if !local_id.is_empty() && local_id != open_id {
                 return Err(Error::invalid("This vault is not the one set up for sync"));
             }
             let remote = crate::sync::HttpRemote::new(&base, &token);
-            let report = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id))?;
+            let (report, version) = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, last_version))?;
+            let open_name = state.with_vault(|open| Ok(open.vault().name.clone()))?;
             state.update_settings(|settings| {
                 if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
                     entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                    entry.name = Some(open_name);
+                    entry.last_version = Some(version);
                 }
             })?;
             Ok(report)
@@ -629,21 +831,24 @@ pub async fn sync_enable_file(
 
             // A vault that is already open is synced in place, so the visible session stays valid.
             let already_open = matches!(&*state.session(), Session::Unlocked(open) if open.path() == path);
+            let version;
             if already_open {
                 let (vault_name, local_id) =
                     state.with_vault(|open| Ok((open.vault().name.clone(), open.vault().id.to_string())))?;
-                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
                 state.update_settings(|settings| {
                     settings.set_synced_vault(crate::settings::SyncedVault {
                         path: path.clone(),
                         server_vault_id: server_vault_id.clone(),
                         local_vault_id: local_id,
+                        name: Some(vault_name),
                         last_version: None,
                         last_synced_at: None,
                     });
                 })?;
                 let remote = crate::sync::HttpRemote::new(&base, &token);
-                state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id))?;
+                let (_report, stored) = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, None))?;
+                version = stored;
             } else {
                 let password = Zeroizing::new(password);
                 require_password(&password)?;
@@ -651,14 +856,16 @@ pub async fn sync_enable_file(
                 let mut open = OpenVault::open(path.clone(), composite)?;
                 let vault_name = open.vault().name.clone();
                 let local_id = open.vault().id.to_string();
-                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name)?;
+                let server_vault_id = crate::sync::ensure_vault(&base, &token, &vault_name, &local_id)?;
                 let remote = crate::sync::HttpRemote::new(&base, &token);
-                open.sync_remote(&remote, &server_vault_id)?;
+                let (_report, stored) = open.sync_remote(&remote, &server_vault_id, None)?;
+                version = stored;
                 state.update_settings(|settings| {
                     settings.set_synced_vault(crate::settings::SyncedVault {
                         path: path.clone(),
                         server_vault_id,
                         local_vault_id: local_id,
+                        name: Some(vault_name),
                         last_version: None,
                         last_synced_at: None,
                     });
@@ -667,6 +874,7 @@ pub async fn sync_enable_file(
             state.update_settings(|settings| {
                 if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
                     entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                    entry.last_version = Some(version);
                 }
             })?;
             Ok(state.status())
@@ -1101,6 +1309,27 @@ pub async fn pick_save_path(
     Ok(save_dialog(app, window, kind, title, suggested_name)
         .await?
         .map(|path| views::path_text(&path)))
+}
+
+/// Lets the user pick a folder (used when saving a downloaded vault).
+#[tauri::command]
+pub async fn pick_folder(app: AppHandle, window: WebviewWindow, title: String) -> Result<Option<String>> {
+    run_blocking(move || {
+        let dialog = app.dialog().file().set_title(title);
+        #[cfg(desktop)]
+        let dialog = dialog.set_parent(&window);
+        #[cfg(mobile)]
+        let _ = &window;
+        let mut dialog = dialog;
+        if let Ok(dir) = vaults_directory(&app) {
+            dialog = dialog.set_directory(dir);
+        }
+        Ok(dialog
+            .blocking_pick_folder()
+            .and_then(|path| path.into_path().ok())
+            .map(|path| views::path_text(&path)))
+    })
+    .await
 }
 
 // ----- Entries -----

@@ -13,7 +13,9 @@ use crate::clipboard::ClipboardState;
 use crate::error::{Error, Result};
 use crate::session::OpenVault;
 use crate::settings::Settings;
-use crate::views::{AppStatus, RecentVaultView, SessionState, SyncVaultView, SyncView, file_name, path_text};
+use crate::views::{
+    AppStatus, CloudVaultView, LocalVaultView, RecentVaultView, SessionState, SyncView, file_name, path_text,
+};
 
 pub enum Session {
     Closed,
@@ -68,20 +70,15 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Starts with the vault passed on the command line (a double-clicked `.lados` file),
-    /// or else the most recent one that still exists.
+    /// Starts on the vault list. A vault is only selected at start-up when it was opened
+    /// explicitly (a double-clicked `.lados` file), never silently from the recent list.
     pub fn new(config_dir: PathBuf, opened_file: Option<PathBuf>) -> Self {
         let settings = Settings::load(&config_dir);
-        let selected = opened_file.or_else(|| {
-            settings
-                .recent_vaults
-                .iter()
-                .map(|recent| recent.path.clone())
-                .find(|path| path.is_file())
-        });
         AppState {
             config_dir,
-            session: Mutex::new(match selected {
+            // Start on the vault list. A recent vault is only selected when it is opened
+            // explicitly (a double-clicked `.lados` file), never silently at start-up.
+            session: Mutex::new(match opened_file {
                 Some(path) => Session::Locked { path },
                 None => Session::Closed,
             }),
@@ -147,28 +144,63 @@ impl AppState {
             sync: {
                 let account = settings.sync_account.as_ref();
                 let synced = path.as_deref().and_then(|path| settings.synced_vault(path));
-                let mut vaults: Vec<SyncVaultView> = Vec::new();
-                let mut seen: HashSet<&Path> = HashSet::new();
-                for recent in &settings.recent_vaults {
-                    seen.insert(recent.path.as_path());
-                    vaults.push(SyncVaultView::new(
-                        &recent.path,
-                        recent.key_file.as_deref(),
-                        settings.synced_vault(&recent.path),
-                    ));
-                }
-                for synced_vault in &settings.synced_vaults {
-                    if seen.insert(synced_vault.path.as_path()) {
-                        vaults.push(SyncVaultView::new(&synced_vault.path, None, Some(synced_vault)));
+
+                // Group bindings by the vault's own identity, so copies of one vault
+                // appear as a single cloud vault with several local files.
+                let mut cloud: Vec<CloudVaultView> = Vec::new();
+                for entry in &settings.synced_vaults {
+                    let identity = if entry.local_vault_id.is_empty() {
+                        entry.server_vault_id.clone()
+                    } else {
+                        entry.local_vault_id.clone()
+                    };
+                    if let Some(group) = cloud.iter_mut().find(|group| group.local_vault_id == identity) {
+                        group.copies.push(path_text(&entry.path));
+                        group.present |= entry.path.is_file();
+                        group.last_synced_at = group.last_synced_at.max(entry.last_synced_at);
+                        // Prefer a real cached vault name over a file-name fallback.
+                        if let Some(name) = &entry.name {
+                            group.name = name.clone();
+                        }
+                    } else {
+                        let fallback = entry
+                            .path
+                            .file_stem()
+                            .map(|stem| stem.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| file_name(&entry.path));
+                        cloud.push(CloudVaultView {
+                            name: entry.name.clone().unwrap_or(fallback),
+                            local_vault_id: identity,
+                            server_vault_id: entry.server_vault_id.clone(),
+                            last_synced_at: entry.last_synced_at,
+                            copies: vec![path_text(&entry.path)],
+                            present: entry.path.is_file(),
+                        });
                     }
                 }
+                cloud.sort_by_key(|group| group.name.to_lowercase());
+
+                let synced_paths: HashSet<&Path> =
+                    settings.synced_vaults.iter().map(|entry| entry.path.as_path()).collect();
+                let local: Vec<LocalVaultView> = settings
+                    .recent_vaults
+                    .iter()
+                    .filter(|recent| !synced_paths.contains(recent.path.as_path()))
+                    .map(|recent| LocalVaultView {
+                        path: path_text(&recent.path),
+                        file_name: file_name(&recent.path),
+                        key_file: recent.key_file.as_deref().map(path_text),
+                    })
+                    .collect();
+
                 SyncView {
                     logged_in: account.is_some(),
                     email: account.map(|account| account.email.clone()),
                     server_url: account.map(|account| account.server_url.clone()),
                     this_vault_synced: synced.is_some(),
                     last_synced_at: synced.and_then(|synced| synced.last_synced_at),
-                    vaults,
+                    cloud,
+                    local,
                 }
             },
         }

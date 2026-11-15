@@ -1,15 +1,15 @@
-// Shown when no vault is selected: create one, open one or pick a recent one.
+// Shown when no vault is selected: create one, open one, download a cloud one or pick a recent one.
 
 import { refreshStatus, showStatus } from "../app";
 import { createVaultDialog } from "../dialogs/create-vault";
 import { pickVaultToOpen } from "../dialogs/open-vault";
-import { openSyncCenter } from "../dialogs/sync-center";
+import { downloadCloudVault, openSyncCenter } from "../dialogs/sync-center";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
-import type { RecentVault } from "../types";
+import type { CloudVault, RecentVault } from "../types";
 import { fileNameOf, iconButton } from "../ui/controls";
-import { h, mount } from "../ui/dom";
-import { logo, svgIcon } from "../ui/icons";
+import { h, mount, type Child } from "../ui/dom";
+import { logo, svgIcon, type IconName } from "../ui/icons";
 import { confirmDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 
@@ -52,6 +52,18 @@ async function openAccount(): Promise<void> {
   await refreshStatus();
 }
 
+async function getCloudVault(vault: CloudVault): Promise<void> {
+  try {
+    const status = await downloadCloudVault(vault);
+    if (status) {
+      store.status = status;
+      await refreshStatus();
+    }
+  } catch (error) {
+    toastError(error);
+  }
+}
+
 async function removeListedVault(path: string, mobile: boolean): Promise<void> {
   try {
     if (mobile) {
@@ -71,33 +83,63 @@ async function removeListedVault(path: string, mobile: boolean): Promise<void> {
   }
 }
 
-function recentItem(vault: RecentVault, mobile: boolean): HTMLElement {
+/** A small "In the cloud" / "In this device" marker. */
+function attribute(label: string, present: boolean): HTMLElement {
+  return h(
+    "span",
+    { class: ["attribute", present ? "yes" : "no"] },
+    svgIcon(present ? "check" : "close", "icon attribute-icon"),
+    label,
+  );
+}
+
+/** The clickable (or static) body of a vault row: icon, name and a second line of detail. */
+function vaultRowBody(icon: IconName, title: string, detail: Child, titleAttr: string, onOpen?: () => void): HTMLElement {
+  const text = h("span", { class: "recent-text" }, h("span", { class: "recent-name truncate", text: title }), detail);
+  if (onOpen) {
+    return h("button", { type: "button", class: "recent-open", title: titleAttr, onClick: onOpen }, svgIcon(icon, "icon recent-icon"), text);
+  }
+  return h("div", { class: "recent-open", title: titleAttr }, svgIcon(icon, "icon recent-icon"), text);
+}
+
+function recentItem(vault: RecentVault, mobile: boolean, showAttributes: boolean): HTMLElement {
   const removeLabel = mobile ? "Delete vault from this phone" : "Remove from this list";
+  const detail = showAttributes
+    ? h(
+        "span",
+        { class: "recent-attributes" },
+        attribute("In the cloud", vault.synced),
+        attribute("In this device", vault.exists),
+      )
+    : h("span", { class: "recent-path", text: vault.exists ? vault.path : `Not found: ${vault.path}` });
   return h(
     "li",
     { class: ["recent-item", !vault.exists && "missing"] },
-    h(
-      "button",
-      {
-        type: "button",
-        class: "recent-open",
-        disabled: !vault.exists,
-        title: vault.path,
-        onClick: () => void selectVault(vault.path),
-      },
-      svgIcon("lock", "icon recent-icon"),
-      h(
-        "span",
-        { class: "recent-text" },
-        h("span", { class: "recent-name", text: vault.fileName }),
-        h("span", {
-          class: "recent-path",
-          text: vault.exists ? vault.path : `Not found: ${vault.path}`,
-        }),
-      ),
-      store.status?.sync.loggedIn && vault.synced ? svgIcon("cloudCheck", "icon recent-sync-badge") : null,
-    ),
+    vaultRowBody("lock", vault.fileName, detail, vault.path, vault.exists ? () => void selectVault(vault.path) : undefined),
     iconButton("close", removeLabel, () => void removeListedVault(vault.path, mobile), "recent-forget"),
+  );
+}
+
+function cloudItem(vault: CloudVault, present: boolean, openPath: string | null): HTMLElement {
+  const detail = h(
+    "span",
+    { class: "recent-attributes" },
+    attribute("In the cloud", true),
+    attribute("In this device", present),
+  );
+  return h(
+    "li",
+    { class: ["recent-item", !present && "cloud-missing"] },
+    vaultRowBody(
+      present ? "cloudCheck" : "cloud",
+      vault.name,
+      detail,
+      vault.name,
+      present && openPath ? () => void selectVault(openPath) : undefined,
+    ),
+    present
+      ? null
+      : h("button", { type: "button", class: "button small primary", onClick: () => void getCloudVault(vault) }, "Get"),
   );
 }
 
@@ -127,6 +169,7 @@ export function renderWelcome(container: HTMLElement): void {
       deviceVaults = await backend.listDeviceVaults().catch(() => []);
     }
     const listed = mobile ? mergeVaultLists(deviceVaults, recent) : recent;
+    const signedIn = status?.sync.loggedIn ?? false;
     const openLabel = "Open a vault…";
     const tagline = mobile
       ? "Your passwords, encrypted and kept on this phone."
@@ -134,6 +177,28 @@ export function renderWelcome(container: HTMLElement): void {
     const footnote = mobile
       ? `Lados ${status?.appVersion ?? ""} · Works offline on this device.`
       : `Lados ${status?.appVersion ?? ""} · Works offline: your data never leaves this computer.`;
+
+    // Signed in: also show the vaults that live in the cloud, so it is clear what is
+    // already on this device and what still has to be downloaded.
+    let cloudVaults: CloudVault[] = [];
+    if (signedIn && !mobile) {
+      cloudVaults = await backend.syncCloudVaults().catch(() => []);
+    }
+    const deviceGroups = status?.sync.cloud ?? [];
+    const syncedPaths = new Set(deviceGroups.flatMap((group) => group.copies));
+    const localOnly = signedIn ? listed.filter((vault) => !syncedPaths.has(vault.path)) : listed;
+
+    const rows: Child[] = [];
+    for (const vault of cloudVaults) {
+      const group = deviceGroups.find((candidate) => candidate.localVaultId === vault.vaultUuid);
+      const present = group?.present ?? false;
+      rows.push(cloudItem(vault, present, present ? (group?.copies[0] ?? null) : null));
+    }
+    for (const vault of localOnly) {
+      rows.push(recentItem(vault, mobile, signedIn));
+    }
+
+    const listTitle = signedIn ? "Your vaults" : mobile ? "Vaults on this phone" : "Recent vaults";
 
     mount(
       root,
@@ -165,13 +230,13 @@ export function renderWelcome(container: HTMLElement): void {
         ),
         mobile
           ? null
-          : status?.sync.loggedIn
+          : signedIn
             ? h(
                 "p",
                 { class: "welcome-sync muted" },
                 svgIcon("cloudCheck"),
-                h("span", { text: `Synced as ${status.sync.email}. ` }),
-                h("button", { type: "button", class: "link-button", onClick: () => void openAccount() }, "Manage"),
+                h("span", { text: `Signed in as ${status?.sync.email}. ` }),
+                h("button", { type: "button", class: "link-button", onClick: () => void openAccount() }, "Sync settings"),
               )
             : h(
                 "p",
@@ -186,18 +251,7 @@ export function renderWelcome(container: HTMLElement): void {
               text: "Create and open use the same folder: Documents › Lados. It survives reinstalling the app. “Browse elsewhere” only imports a copy into that folder.",
             })
           : null,
-        listed.length > 0
-          ? h(
-              "section",
-              { class: "recent" },
-              h("h2", { text: mobile ? "Vaults on this phone" : "Recent vaults" }),
-              h(
-                "ul",
-                { class: "recent-list" },
-                listed.map((vault) => recentItem(vault, mobile)),
-              ),
-            )
-          : null,
+        rows.length > 0 ? h("section", { class: "recent" }, h("h2", { text: listTitle }), h("ul", { class: "recent-list" }, rows)) : null,
         h("p", { class: "footnote", text: footnote }),
       ),
     );

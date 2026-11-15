@@ -93,12 +93,45 @@ async function readJson<T>(request: Request): Promise<T | null> {
 
 // ----- Handlers -----
 
+function clientIp(request: Request): string {
+  return request.headers.get("cf-connecting-ip") || "unknown";
+}
+
+/// Increments a fixed-window counter and returns false once the limit is reached. Best-effort
+/// (a lost race can let one extra request through), which is fine for abuse throttling.
+async function allow(env: Env, bucket: string, limit: number, windowSeconds: number): Promise<boolean> {
+  const now = Date.now();
+  const resetAt = now + windowSeconds * 1000;
+  const row = await env.DB.prepare("SELECT count, reset_at FROM rate_limits WHERE bucket = ?")
+    .bind(bucket)
+    .first<{ count: number; reset_at: number }>();
+  if (!row || row.reset_at <= now) {
+    await env.DB.prepare(
+      "INSERT INTO rate_limits (bucket, count, reset_at) VALUES (?, 1, ?) ON CONFLICT(bucket) DO UPDATE SET count = 1, reset_at = ?",
+    )
+      .bind(bucket, resetAt, resetAt)
+      .run();
+    // Cheap opportunistic cleanup of expired buckets.
+    if (Math.random() < 0.02) {
+      await env.DB.prepare("DELETE FROM rate_limits WHERE reset_at <= ?").bind(now).run();
+    }
+    return true;
+  }
+  if (row.count >= limit) return false;
+  await env.DB.prepare("UPDATE rate_limits SET count = count + 1 WHERE bucket = ?").bind(bucket).run();
+  return true;
+}
+
 async function register(env: Env, request: Request): Promise<Response> {
   const body = await readJson<{ email?: string; authSecret?: string }>(request);
   const email = body?.email?.trim().toLowerCase();
   const authSecret = body?.authSecret;
   if (!email || !email.includes("@") || !authSecret) {
     return json({ error: "invalid_request" }, 400);
+  }
+
+  if (!(await allow(env, `register:ip:${clientIp(request)}`, 30, 900))) {
+    return json({ error: "rate_limited" }, 429);
   }
 
   const existing = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?")
@@ -110,7 +143,7 @@ async function register(env: Env, request: Request): Promise<Response> {
   const verifier = await verifierFor(salt, authSecret);
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, created_at) VALUES (?, ?, ?, ?, 'argon2', 'active', ?)",
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, created_at) VALUES (?, ?, ?, ?, 'argon2v2', 'active', ?)",
   )
     .bind(id, email, salt, verifier, Date.now())
     .run();
@@ -120,11 +153,18 @@ async function register(env: Env, request: Request): Promise<Response> {
 }
 
 async function login(env: Env, request: Request): Promise<Response> {
-  const body = await readJson<{ email?: string; authSecret?: string; legacyAuthSecret?: string }>(request);
+  const body = await readJson<{
+    email?: string;
+    authSecret?: string;
+    previousAuthSecret?: string;
+    legacyAuthSecret?: string;
+  }>(request);
   const email = body?.email?.trim().toLowerCase();
   const authSecret = body?.authSecret;
-  const legacyAuthSecret = body?.legacyAuthSecret;
   if (!email || !authSecret) return json({ error: "invalid_request" }, 400);
+
+  if (!(await allow(env, `login:ip:${clientIp(request)}`, 100, 900))) return json({ error: "rate_limited" }, 429);
+  if (!(await allow(env, `login:email:${email}`, 20, 900))) return json({ error: "rate_limited" }, 429);
 
   const row = await env.DB.prepare(
     "SELECT id, salt, verifier, scheme, plan FROM accounts WHERE email = ?",
@@ -133,24 +173,21 @@ async function login(env: Env, request: Request): Promise<Response> {
     .first<{ id: string; salt: string; verifier: string; scheme: string; plan: string }>();
   if (!row) return json({ error: "invalid_credentials" }, 401);
 
-  if (row.scheme === "argon2") {
-    const candidate = await verifierFor(row.salt, authSecret);
-    if (!timingSafeEqual(candidate, row.verifier)) {
-      return json({ error: "invalid_credentials" }, 401);
-    }
-  } else {
-    // Account created before the auth-secret hardening: verify with the old derivation, then
-    // replace the stored credential with the Argon2 one so the account is upgraded for good.
-    if (!legacyAuthSecret) return json({ error: "invalid_credentials" }, 401);
-    const candidate = await verifierFor(row.salt, legacyAuthSecret);
-    if (!timingSafeEqual(candidate, row.verifier)) {
-      return json({ error: "invalid_credentials" }, 401);
-    }
+  // Each scheme has its own secret; the client sends the matching one so older accounts can
+  // authenticate once and be upgraded to the per-account salt.
+  let presented: string | undefined;
+  if (row.scheme === "argon2v2") presented = authSecret;
+  else if (row.scheme === "argon2") presented = body?.previousAuthSecret ?? authSecret;
+  else presented = body?.legacyAuthSecret;
+  if (!presented) return json({ error: "invalid_credentials" }, 401);
+
+  const candidate = await verifierFor(row.salt, presented);
+  if (!timingSafeEqual(candidate, row.verifier)) return json({ error: "invalid_credentials" }, 401);
+
+  if (row.scheme !== "argon2v2") {
     const salt = randomHex(16);
     const verifier = await verifierFor(salt, authSecret);
-    await env.DB.prepare(
-      "UPDATE accounts SET salt = ?, verifier = ?, scheme = 'argon2' WHERE id = ?",
-    )
+    await env.DB.prepare("UPDATE accounts SET salt = ?, verifier = ?, scheme = 'argon2v2' WHERE id = ?")
       .bind(salt, verifier, row.id)
       .run();
   }
@@ -165,7 +202,7 @@ async function me(env: Env, account: AccountRow): Promise<Response> {
 
 async function listVaults(env: Env, account: AccountRow): Promise<Response> {
   const { results } = await env.DB.prepare(
-    "SELECT id, name, version, updated_at FROM vaults WHERE account_id = ? ORDER BY name",
+    "SELECT id, name, vault_uuid, version, updated_at FROM vaults WHERE account_id = ? ORDER BY name",
   )
     .bind(account.id)
     .all();
@@ -173,13 +210,26 @@ async function listVaults(env: Env, account: AccountRow): Promise<Response> {
 }
 
 async function createVault(env: Env, account: AccountRow, request: Request): Promise<Response> {
-  const body = await readJson<{ name?: string }>(request);
+  const body = await readJson<{ name?: string; vaultUuid?: string }>(request);
   const name = (body?.name || "Vault").slice(0, 200);
+  const vaultUuid = body?.vaultUuid?.slice(0, 100) || null;
+
+  // The vault's own id is its identity: reuse the existing cloud copy instead of making
+  // a second one for the same vault.
+  if (vaultUuid) {
+    const existing = await env.DB.prepare(
+      "SELECT id, name, version FROM vaults WHERE account_id = ? AND vault_uuid = ?",
+    )
+      .bind(account.id, vaultUuid)
+      .first<{ id: string; name: string; version: number }>();
+    if (existing) return json({ id: existing.id, name: existing.name, version: existing.version });
+  }
+
   const id = crypto.randomUUID();
   await env.DB.prepare(
-    "INSERT INTO vaults (id, account_id, name, version, updated_at) VALUES (?, ?, ?, 0, ?)",
+    "INSERT INTO vaults (id, account_id, name, vault_uuid, version, updated_at) VALUES (?, ?, ?, ?, 0, ?)",
   )
-    .bind(id, account.id, name, Date.now())
+    .bind(id, account.id, name, vaultUuid, Date.now())
     .run();
   return json({ id, name, version: 0 });
 }
@@ -214,6 +264,7 @@ async function getVault(env: Env, account: AccountRow, id: string): Promise<Resp
 async function putVault(env: Env, account: AccountRow, id: string, request: Request): Promise<Response> {
   const vault = await ownedVault(env, account, id);
   if (!vault) return json({ error: "not_found" }, 404);
+  if (!(await allow(env, `put:${account.id}`, 240, 900))) return json({ error: "rate_limited" }, 429);
 
   const ifMatch = request.headers.get("if-match");
   const base = ifMatch === null ? vault.version : Number(ifMatch);

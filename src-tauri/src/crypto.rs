@@ -133,12 +133,32 @@ pub const SYNC_AUTH_KDF: KdfParams = KdfParams {
     parallelism: 4,
 };
 
+/// The Argon2id salt for the auth secret, derived from the account's email. Per-account
+/// salting means two users with the same password get different secrets, so a leaked
+/// verifier table cannot be attacked with one Argon2 run per guess across all accounts.
+fn auth_salt(account: &str) -> [u8; SALT_LEN] {
+    let mut hasher = Sha256::new();
+    hasher.update(b"lados-sync-auth-salt-v2:");
+    hasher.update(account.as_bytes());
+    let digest = hasher.finalize();
+    let mut salt = [0u8; SALT_LEN];
+    salt.copy_from_slice(&digest);
+    salt
+}
+
 /// Derives the secret that authenticates the sync account, as lowercase hex.
 ///
-/// The composite key is cheap to compute, so on its own it would let anyone who stole the
-/// server's credential table test master-password guesses quickly. Running it through
-/// Argon2id first makes each guess as expensive as unlocking the vault itself.
-pub fn sync_auth_secret(composite: &SecretKey) -> Result<String> {
+/// The composite key is cheap to compute, so running it through Argon2id is what makes
+/// each master-password guess as expensive as unlocking the vault.
+pub fn sync_auth_secret(composite: &SecretKey, account: &str) -> Result<String> {
+    let salt = auth_salt(account);
+    let secret = derive_key(composite, &salt, SYNC_AUTH_KDF)?;
+    Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// The previous derivation, which used one global salt. Kept only so accounts created
+/// before the per-account salt can sign in once and be upgraded.
+pub fn previous_auth_secret(composite: &SecretKey) -> Result<String> {
     let salt: [u8; SALT_LEN] = sha256(b"lados-sync-auth-salt-v1");
     let secret = derive_key(composite, &salt, SYNC_AUTH_KDF)?;
     Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())

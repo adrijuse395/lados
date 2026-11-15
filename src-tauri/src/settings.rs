@@ -34,6 +34,9 @@ pub struct Preferences {
     pub clipboard_clear_seconds: u32,
     /// Closing the window keeps Lados running in the system tray.
     pub close_to_tray: bool,
+    /// Folder new vaults are created in and downloads land in. `None` = the default
+    /// (`Documents/Lados`). The user can point it elsewhere.
+    pub vaults_folder: Option<String>,
     pub generator: GeneratorOptions,
 }
 
@@ -44,6 +47,7 @@ impl Default for Preferences {
             auto_lock_minutes: 5,
             clipboard_clear_seconds: 20,
             close_to_tray: true,
+            vaults_folder: None,
             generator: GeneratorOptions::default(),
         }
     }
@@ -94,6 +98,8 @@ pub struct SyncedVault {
     pub server_vault_id: String,
     /// The vault's own id, so a different vault is never merged by mistake.
     pub local_vault_id: String,
+    /// Last known vault name, cached so the list can show it while the vault is locked.
+    pub name: Option<String>,
     /// Last remote version this device saw.
     pub last_version: Option<u64>,
     /// Last successful sync, in Unix milliseconds.

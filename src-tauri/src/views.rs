@@ -50,31 +50,34 @@ pub struct SyncView {
     pub this_vault_synced: bool,
     /// Last successful sync of the open vault, in Unix milliseconds.
     pub last_synced_at: Option<i64>,
-    /// Every vault the user knows about, with its sync state, for the sync space.
-    pub vaults: Vec<SyncVaultView>,
+    /// Cloud vaults known to this device, grouped by the vault's own identity.
+    pub cloud: Vec<CloudVaultView>,
+    /// Vaults on this device that are not synced.
+    pub local: Vec<LocalVaultView>,
 }
 
-/// One row of the vault list inside the sync space.
+/// A vault that has a cloud copy, with the local copies on this device.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncVaultView {
+pub struct CloudVaultView {
+    pub name: String,
+    /// The vault's own id (immutable): the true identity of the vault.
+    pub local_vault_id: String,
+    pub server_vault_id: String,
+    pub last_synced_at: Option<i64>,
+    /// Local file paths of this vault on this device.
+    pub copies: Vec<String>,
+    /// At least one local copy exists on disk.
+    pub present: bool,
+}
+
+/// A vault on this device that is not synced.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalVaultView {
     pub path: String,
     pub file_name: String,
     pub key_file: Option<String>,
-    pub synced: bool,
-    pub last_synced_at: Option<i64>,
-}
-
-impl SyncVaultView {
-    pub fn new(path: &Path, key_file: Option<&Path>, synced: Option<&SyncedVault>) -> Self {
-        SyncVaultView {
-            path: path_text(path),
-            file_name: file_name(path),
-            key_file: key_file.map(path_text),
-            synced: synced.is_some(),
-            last_synced_at: synced.and_then(|synced| synced.last_synced_at),
-        }
-    }
 }
 
 #[derive(Debug, Serialize)]

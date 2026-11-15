@@ -258,9 +258,10 @@ impl OpenVault {
         &mut self,
         remote: &dyn crate::sync::Remote,
         vault_id: &str,
-    ) -> Result<MergeReport> {
+        last_seen: Option<u64>,
+    ) -> Result<(MergeReport, u64)> {
         let composite = self.file.composite.clone();
-        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &composite, &self.file.key)?;
+        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &composite, &self.file.key, last_seen)?;
         let key_changed = outcome.key.salt != self.file.key.salt || outcome.key.kdf != self.file.key.kdf;
         if outcome.changed_locally || key_changed {
             // Adopt the remote header so every device converges on one salt.
@@ -268,7 +269,7 @@ impl OpenVault {
             self.file.save(&mut draft, Some((composite, outcome.key)))?;
             std::mem::swap(&mut self.vault, &mut *draft);
         }
-        Ok(outcome.report)
+        Ok((outcome.report, outcome.version))
     }
 
     /// Picks up changes saved by other windows. Called periodically.

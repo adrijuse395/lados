@@ -60,14 +60,14 @@ From the user's master password (and optional key file — see §9) the client d
 | `authSecret` | exchanged during login only | Authenticates the account |
 
 - The server stores a **verifier**: `SHA-256(salt ‖ authSecret)` with a per-account
-  salt. `authSecret` is `Argon2id(compositeKey)` (fixed parameters, so every device derives
-  the same value), so an attacker who stole the credential table still has to run the full
-  Argon2 cost for **every** master-password guess — the same cost as unlocking the vault.
-  The server never stores `authSecret`.
-- **Migration:** accounts created before the hardening carry `scheme = 'legacy'` (the fast
-  derivation). On the next successful login the server verifies the legacy secret and then
-  rewrites the stored verifier from the Argon2 secret, upgrading the account in place.
-- **v1 login:** TLS + verifier. **v1.1 (optional):** upgrade to OPAQUE (RFC 9807) so the
+  salt. `authSecret` is `Argon2id(compositeKey, salt = f(email))` — **per-account salted**, so
+  two users with the same password derive different secrets and a leaked table cannot be
+  attacked with one Argon2 run per guess across all accounts. The server never stores
+  `authSecret`.
+- **Migration:** older accounts are upgraded in place on their next successful login. The
+  client also sends the previous derivations (a single-salt Argon2, and the original fast
+  hash) so any pre-existing account can authenticate once and be re-keyed.
+- **v1 login:** TLS + verifier. **v1.1 (planned):** upgrade to OPAQUE (RFC 9807) so the
   server never sees anything password-equivalent.
 - The encryption key derivation stays exactly as it is today (Argon2id + per-file salt
   in the `.lados` header). Sync does not change the file format.
@@ -334,14 +334,50 @@ The local application is **never** disabled — only the cloud part stops when u
 
 ## 19. Vault model and binding
 
-- **An account can own N vaults** (the server already supports it: `vaults.account_id`).
-  For v1 we **bind one vault per account** — the common case, kept simple.
-- **Each local `.lados` file binds 1:1 to one server vault**, identified by the vault's
-  own **UUID** (stored in the sync config). A copy of the file matches; a *different*
-  local vault does not, and **sync refuses to merge it** instead of mixing data.
-- The client shows what a sync did (entries added/updated) and the last sync time, so the
-  behaviour is visible rather than silent.
-- **Future (additive, no rewrite):** a true “new device” flow — *sign in → list your
-  vault(s) → download the one you want* — which unlocks multiple vaults per account and,
-  later, team/business plans.
+- An account can own **N cloud vaults**, and each local `.lados` binds to a cloud vault through
+  the vault's own **UUID** (not its name). A copy of a file matches; a *different* vault is a
+  different cloud vault and is never merged by accident.
+- The **standard vaults folder** is `Documents/Lados` (changeable in Settings). New vaults are
+  created there and downloads land there, named after the vault; the user chooses only the
+  folder.
+- The **start screen** lists each vault with **In the cloud** and **In this device**, so a new
+  device sees at once which vaults still have to be downloaded.
+- **New device:** sign in, pick a cloud vault, and the app downloads it, derives the key from
+  the blob's own header, binds it and syncs.
+
+## 20. Threat model
+
+**Design:** zero-knowledge. The server stores only ciphertext; every key is derived on the
+device and never transmitted.
+
+### A remote attacker (only API access)
+- **Cannot read any vault.** Every query is scoped by the authenticated account; there is no
+  bulk endpoint; blobs are opaque ciphertext.
+- Online credential guessing is **throttled** (fixed-window rate limits on `/auth/*` and on
+  uploads).
+- **Email enumeration** is possible (register returns `409` for a taken address) — known
+  limitation, to be closed with email verification.
+
+### A breach of D1/R2, a stolen token, or a malicious operator
+- Yields **metadata** (email, vault name, size, timestamps) and **ciphertext** — never plaintext.
+- **Passwords are at risk only if a blob leaks *and* the master password is weak.** That is
+  inherent to zero-knowledge; it is mitigated by a strong KDF, enforced strong account
+  passwords, and minimising the chance of any leak.
+- A stolen bearer token allows **sabotage** (overwrite or delete the cloud copy), not reading.
+- The account credential is **per-account salted Argon2**, so a leaked verifier table cannot be
+  attacked with a single Argon2 run per guess across all accounts.
+- **Rollback protection:** each device remembers the last cloud version it saw and refuses a
+  cloud copy older than that, so a server cannot silently revert a vault.
+
+### Operator trust
+- The **Cloudflare account** and the **release-signing key** are the root of trust; they need
+  2FA, scoped tokens and alerts. A malicious server can serve data and even logins, but it still
+  cannot decrypt vaults.
+- **Planned:** OPAQUE login, so the server never sees a password-equivalent.
+
+### Known limitations / next steps
+1. **OPAQUE login** — removes the password-equivalent from the wire.
+2. **Metadata** — encrypt or drop the plaintext vault name.
+3. **Email verification** — removes enumeration and enables billing.
+4. **Password rotation and session revocation ("sign out everywhere").**
 

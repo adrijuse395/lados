@@ -9,6 +9,7 @@ import { resetVaultState, setVault, store } from "./state/store";
 import type { AppStatus, MergeReport, Theme } from "./types";
 import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
+import { errorMessage } from "./ui/toast";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
 
 function root(): HTMLElement {
@@ -57,7 +58,7 @@ export async function performSync(): Promise<MergeReport> {
   if (syncRunning) throw new Error("A sync is already in progress");
   syncRunning = true;
   store.syncing = true;
-  store.syncFailed = false;
+  store.syncError = null;
   redraw();
   try {
     const report = await backend.syncNow();
@@ -65,7 +66,7 @@ export async function performSync(): Promise<MergeReport> {
     await loadVault();
     return report;
   } catch (error) {
-    store.syncFailed = true;
+    store.syncError = errorMessage(error);
     throw error;
   } finally {
     syncRunning = false;

@@ -48,6 +48,8 @@ export interface Preferences {
   autoLockMinutes: number;
   clipboardClearSeconds: number;
   closeToTray: boolean;
+  /** Folder new vaults are created in and downloads land in; null = the default. */
+  vaultsFolder: string | null;
   generator: GeneratorOptions;
 }
 
@@ -82,17 +84,39 @@ export interface SyncView {
   thisVaultSynced: boolean;
   /** Last successful sync of the open vault, in Unix milliseconds. */
   lastSyncedAt: number | null;
-  /** Every vault the user knows about, with its sync state. */
-  vaults: SyncVaultView[];
+  /** Cloud vaults known to this device, grouped by the vault's own identity. */
+  cloud: CloudVaultView[];
+  /** Vaults on this device that are not synced. */
+  local: LocalVaultView[];
 }
 
-/** One vault row inside the sync space. */
-export interface SyncVaultView {
+/** A vault that has a cloud copy, with the local copies on this device. */
+export interface CloudVaultView {
+  name: string;
+  /** The vault's own id (immutable): the true identity of the vault. */
+  localVaultId: string;
+  serverVaultId: string;
+  lastSyncedAt: number | null;
+  /** Local file paths of this vault on this device. */
+  copies: string[];
+  /** At least one local copy exists on disk. */
+  present: boolean;
+}
+
+/** A vault on this device that is not synced. */
+export interface LocalVaultView {
   path: string;
   fileName: string;
   keyFile: string | null;
-  synced: boolean;
-  lastSyncedAt: number | null;
+}
+
+/** A cloud vault as listed by the server (metadata only). */
+export interface CloudVault {
+  id: string;
+  name: string;
+  vaultUuid: string | null;
+  version: number;
+  updatedAt: number;
 }
 
 export type Icon = { kind: "builtin"; value: string } | { kind: "custom"; value: Uuid };

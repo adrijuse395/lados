@@ -23,9 +23,18 @@ CREATE TABLE IF NOT EXISTS vaults (
   id          TEXT PRIMARY KEY,
   account_id  TEXT NOT NULL,
   name        TEXT NOT NULL,
+  vault_uuid  TEXT,                            -- the vault's own id: its identity
   version     INTEGER NOT NULL DEFAULT 0,
   updated_at  INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_vaults_account  ON vaults(account_id);
+CREATE INDEX IF NOT EXISTS idx_vaults_uuid     ON vaults(account_id, vault_uuid);
+
+-- Fixed-window counters for abuse throttling (auth attempts, uploads).
+CREATE TABLE IF NOT EXISTS rate_limits (
+  bucket    TEXT PRIMARY KEY,
+  count     INTEGER NOT NULL,
+  reset_at  INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);

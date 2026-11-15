@@ -7,7 +7,7 @@ import type { Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
 import { showDialog } from "../ui/modal";
-import { toastError } from "../ui/toast";
+import { toast, toastError } from "../ui/toast";
 
 const AUTO_LOCK_CHOICES = [0, 1, 2, 5, 10, 15, 30, 60, 120, 240];
 const CLIPBOARD_CHOICES = [0, 10, 20, 30, 45, 60, 90, 120];
@@ -82,6 +82,44 @@ export async function openSettings(): Promise<void> {
     "Opens in the background so browser autofill is ready without launching it first.",
   );
 
+  const vaultsFolderText = h("code", { class: "muted", text: await backend.vaultsFolder().catch(() => "") });
+  const changeVaultsFolder = h(
+    "button",
+    {
+      type: "button",
+      class: "button small",
+      onClick: async () => {
+        try {
+          const picked = await backend.pickFolder("Choose the folder for new vaults");
+          if (!picked) return;
+          await save((preferences) => (preferences.vaultsFolder = picked));
+          vaultsFolderText.textContent = await backend.vaultsFolder().catch(() => picked);
+          toast("Vaults folder changed");
+        } catch (error) {
+          toastError(error);
+        }
+      },
+    },
+    "Change…",
+  );
+  const resetVaultsFolder = h(
+    "button",
+    {
+      type: "button",
+      class: "button small",
+      onClick: async () => {
+        try {
+          await save((preferences) => (preferences.vaultsFolder = null));
+          vaultsFolderText.textContent = await backend.vaultsFolder().catch(() => "");
+          toast("Using the default folder");
+        } catch (error) {
+          toastError(error);
+        }
+      },
+    },
+    "Reset",
+  );
+
   await showDialog<true>({
     title: "Settings",
     size: "medium",
@@ -99,6 +137,24 @@ export async function openSettings(): Promise<void> {
         }),
       ),
       h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray, mobile ? null : startup),
+      h(
+        "section",
+        { class: "settings-section" },
+        h("h3", { text: "Vaults" }),
+        h("p", {
+          class: "muted",
+          text: "New vaults are created here, and cloud vaults are downloaded here. You can change it.",
+        }),
+        field(
+          "Folder",
+          h(
+            "div",
+            { class: "stack", style: "gap: 8px" },
+            vaultsFolderText,
+            h("div", { class: "browser-choices" }, changeVaultsFolder, resetVaultsFolder),
+          ),
+        ),
+      ),
       mobile
         ? null
         : h(

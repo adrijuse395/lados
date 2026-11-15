@@ -240,7 +240,7 @@
 .topbar {
   display: grid;
   flex: none;
-  grid-template-columns: minmax(150px, 228px) minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(150px, 320px) minmax(180px, 1fr) auto;
   align-items: center;
   gap: 16px;
   height: 56px;

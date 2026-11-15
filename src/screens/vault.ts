@@ -47,6 +47,7 @@ function openMoreMenu(anchor: HTMLElement): void {
     { label: "Rename vault…", icon: "edit", onSelect: () => void actions.renameVault() },
     { label: "Change master key…", icon: "key", onSelect: () => void actions.changeMasterKey() },
     { label: "Settings…", icon: "settings", onSelect: () => void actions.showSettings() },
+    { label: "Sync settings…", icon: "cloud", onSelect: () => void actions.showSyncCenter() },
     { label: "Find for URL…", icon: "search", onSelect: () => void actions.showUrlMatchTester() },
     { label: "Keyboard shortcuts", icon: "info", onSelect: () => void actions.showShortcuts() },
     "separator",
@@ -70,19 +71,14 @@ function syncChipState(): SyncChipState | null {
   if (store.syncing) {
     return { label: "Syncing…", icon: "refresh", tone: "busy", title: "Syncing this vault…" };
   }
-  if (store.syncFailed) {
-    return {
-      label: "Sync failed",
-      icon: "warning",
-      tone: "warn",
-      title: "Could not reach the sync server. Your changes are safe on this device and will sync when it is back.",
-    };
+  if (store.syncError) {
+    return { label: "Sync failed", icon: "warning", tone: "warn", title: `${store.syncError} Click to retry.` };
   }
   if (sync.thisVaultSynced) {
-    const when = sync.lastSyncedAt ? ` · ${relativeTime(sync.lastSyncedAt)}` : "";
-    return { label: "Synced", icon: "cloudCheck", tone: "ok", title: `Up to date${when}. Click to sync now.` };
+    const when = sync.lastSyncedAt ? `Last synced ${relativeTime(sync.lastSyncedAt)}.` : "Not synced yet.";
+    return { label: "Synced", icon: "cloudCheck", tone: "ok", title: `${when} Click for sync options.` };
   }
-  return { label: "Not synced", icon: "cloud", tone: "off", title: "This vault is not synced yet. Click to set it up." };
+  return { label: "Not synced", icon: "cloud", tone: "off", title: "This vault is not synced. Click for sync options." };
 }
 
 function renderSyncChip(slot: HTMLElement): void {
@@ -110,20 +106,33 @@ function renderSyncChip(slot: HTMLElement): void {
 function openSyncMenu(anchor: HTMLElement): void {
   const sync = store.status?.sync;
   if (!sync?.loggedIn) return;
-  const entries: MenuEntry[] = [
-    { label: `Signed in as ${sync.email}`, icon: "user", disabled: true, onSelect: () => undefined },
-    "separator",
-  ];
+  const entries: MenuEntry[] = [];
   if (sync.thisVaultSynced) {
-    entries.push({ label: "Sync now", icon: "refresh", onSelect: () => void syncNow() });
+    entries.push({
+      label: store.syncError ? "Retry sync" : "Sync now",
+      icon: "refresh",
+      onSelect: () => void syncNow(),
+    });
   } else {
     entries.push({ label: "Sync this vault", icon: "cloudCheck", onSelect: () => void enableVaultSync() });
   }
+  entries.push({ label: "Sync settings…", icon: "settings", onSelect: () => void actions.showSyncCenter() });
   entries.push("separator");
-  if (sync.thisVaultSynced) {
-    entries.push({ label: "Stop syncing this vault", icon: "cloud", danger: true, onSelect: () => void disableVaultSync() });
-  }
-  entries.push({ label: "Lados Sync…", icon: "settings", onSelect: () => void actions.showSyncCenter() });
+  entries.push({
+    label: sync.thisVaultSynced
+      ? sync.lastSyncedAt
+        ? `Last synced · ${relativeTime(sync.lastSyncedAt)}`
+        : "Last synced · never"
+      : "Not synced yet",
+    icon: "clock",
+    onSelect: () => {
+      if (sync.thisVaultSynced && sync.lastSyncedAt) {
+        toast(`Last synced on ${new Date(sync.lastSyncedAt).toLocaleString()}`);
+      } else {
+        toast("This vault has not been synced yet");
+      }
+    },
+  });
   openMenu(anchor, entries);
 }
 
@@ -143,16 +152,6 @@ async function enableVaultSync(): Promise<void> {
   try {
     store.status = await backend.syncEnable();
     toast("This vault is now synced", "success");
-    drawVault();
-  } catch (error) {
-    toastError(error);
-  }
-}
-
-async function disableVaultSync(): Promise<void> {
-  try {
-    store.status = await backend.syncDisable();
-    toast("Stopped syncing this vault");
     drawVault();
   } catch (error) {
     toastError(error);

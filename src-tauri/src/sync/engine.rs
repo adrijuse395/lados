@@ -27,6 +27,8 @@ pub struct SyncOutcome {
     /// The key matching the remote header. The caller adopts it so the local file and
     /// the server converge on one salt.
     pub key: VaultKey,
+    /// The cloud version this pass ended at, for rollback protection.
+    pub version: u64,
 }
 
 /// Derives the vault key for a given encrypted blob, from its header and the master
@@ -51,8 +53,19 @@ pub fn sync(
     local: &Vault,
     composite: &SecretKey,
     local_key: &VaultKey,
+    last_seen: Option<u64>,
 ) -> Result<SyncOutcome> {
     let remote_now = remote.get(vault_id)?;
+
+    // Rollback protection: never apply a cloud copy older than the last version this device
+    // saw. A server that silently serves an old blob cannot resurrect or lose data.
+    if let (Some(seen), Some(remote_vault)) = (last_seen, remote_now.as_ref())
+        && remote_vault.version < seen
+    {
+        return Err(Error::invalid(
+            "The cloud copy is older than the last one this device saw; refusing it in case of a rollback",
+        ));
+    }
 
     let mut merged = local.clone();
     let mut report = MergeReport::default();
@@ -60,6 +73,7 @@ pub fn sync(
     let mut base: Option<u64> = None;
     let mut needs_upload = remote_now.is_none();
     let mut key = local_key.clone();
+    let mut version = remote_now.as_ref().map(|vault| vault.version).unwrap_or(0);
 
     if let Some(remote_vault) = &remote_now {
         key = key_for(composite, &remote_vault.bytes)?;
@@ -70,6 +84,7 @@ pub fn sync(
         changed_locally = outcome.local_changed;
         needs_upload = outcome.remote_outdated;
         base = Some(remote_vault.version);
+        version = remote_vault.version;
     }
 
     if !needs_upload {
@@ -79,17 +94,19 @@ pub fn sync(
             uploaded: false,
             report,
             key,
+            version,
         });
     }
 
     let bytes = storage::encrypt_vault(&merged, &key)?;
     match remote.put(vault_id, base, &bytes)? {
-        PutOutcome::Stored { .. } => Ok(SyncOutcome {
+        PutOutcome::Stored { version: stored } => Ok(SyncOutcome {
             vault: merged,
             changed_locally,
             uploaded: true,
             report,
             key,
+            version: stored,
         }),
         PutOutcome::Conflict { current } => {
             // Somebody wrote first: their copy may carry a different header, so derive
@@ -99,12 +116,13 @@ pub fn sync(
             let outcome = merge::merge(&merged, &remote_plain);
             let bytes = storage::encrypt_vault(&outcome.vault, &current_key)?;
             match remote.put(vault_id, Some(current.version), &bytes)? {
-                PutOutcome::Stored { .. } => Ok(SyncOutcome {
+                PutOutcome::Stored { version: stored } => Ok(SyncOutcome {
                     vault: outcome.vault,
                     changed_locally: changed_locally || outcome.local_changed,
                     uploaded: true,
                     report: outcome.report,
                     key: current_key,
+                    version: stored,
                 }),
                 PutOutcome::Conflict { .. } => Err(Error::invalid(
                     "The vault changed again while syncing; please retry",
@@ -145,11 +163,11 @@ mod tests {
         let mut first_device = base.clone();
         first_device.add_entry(None, content("Mail", "1")).unwrap();
 
-        let uploaded = sync(&remote, "v1", &first_device, &composite, &key).unwrap();
+        let uploaded = sync(&remote, "v1", &first_device, &composite, &key, None).unwrap();
         assert!(uploaded.uploaded);
 
         // A device that only had the (older, empty) copy learns about the entry.
-        let received = sync(&remote, "v1", &base, &composite, &key).unwrap();
+        let received = sync(&remote, "v1", &base, &composite, &key, None).unwrap();
         assert!(!received.uploaded, "nothing to write back");
         assert!(received.changed_locally);
         assert_eq!(received.vault.entries.len(), 1);
@@ -164,13 +182,13 @@ mod tests {
         let base = Vault::new("Main").unwrap();
         let mut device_a = base.clone();
         device_a.add_entry(None, content("Mail", "1")).unwrap();
-        sync(&remote, "v1", &device_a, &composite, &key_a).unwrap();
+        sync(&remote, "v1", &device_a, &composite, &key_a, None).unwrap();
 
         // Device B has its own (different) salt but the same master password.
         let key_b = VaultKey::generate(&composite, KdfParams::FOR_TESTS).unwrap();
         assert_ne!(key_a.salt, key_b.salt);
 
-        let received = sync(&remote, "v1", &base, &composite, &key_b).unwrap();
+        let received = sync(&remote, "v1", &base, &composite, &key_b, None).unwrap();
         assert_eq!(received.vault.entries.len(), 1, "it could decrypt the remote copy");
         assert_eq!(received.key.salt, key_a.salt, "and adopted the vault's salt");
     }
@@ -183,15 +201,15 @@ mod tests {
 
         let mut device_a = base.clone();
         device_a.add_entry(None, content("A", "1")).unwrap();
-        let a = sync(&remote, "v1", &device_a, &composite, &key).unwrap().vault;
+        let a = sync(&remote, "v1", &device_a, &composite, &key, None).unwrap().vault;
 
         let mut device_b = base.clone();
         device_b.add_entry(None, content("B", "2")).unwrap();
-        let b = sync(&remote, "v1", &device_b, &composite, &key).unwrap();
+        let b = sync(&remote, "v1", &device_b, &composite, &key, None).unwrap();
         assert_eq!(b.vault.entries.len(), 2);
         assert!(b.uploaded);
 
-        let a2 = sync(&remote, "v1", &a, &composite, &key).unwrap();
+        let a2 = sync(&remote, "v1", &a, &composite, &key, None).unwrap();
         assert_eq!(a2.vault.entries.len(), 2);
         assert!(a2.changed_locally);
     }
@@ -202,8 +220,8 @@ mod tests {
         let (composite, key) = credentials();
         let vault = Vault::new("Main").unwrap();
 
-        sync(&remote, "v1", &vault, &composite, &key).unwrap();
-        let again = sync(&remote, "v1", &vault, &composite, &key).unwrap();
+        sync(&remote, "v1", &vault, &composite, &key, None).unwrap();
+        let again = sync(&remote, "v1", &vault, &composite, &key, None).unwrap();
         assert!(!again.uploaded);
         assert!(!again.changed_locally);
     }
@@ -248,9 +266,24 @@ mod tests {
             .put("v1", None, &storage::encrypt_vault(&base, &key).unwrap())
             .unwrap();
 
-        let outcome = sync(&remote, "v1", &mine, &composite, &key).unwrap();
+        let outcome = sync(&remote, "v1", &mine, &composite, &key, None).unwrap();
         let titles: Vec<&str> = outcome.vault.entries.iter().map(|e| e.content.title.as_str()).collect();
         assert!(titles.contains(&"Mine"), "local change kept");
         assert!(titles.contains(&"Theirs"), "concurrent change merged");
+    }
+
+    #[test]
+    fn a_rollback_is_refused() {
+        let remote = MemoryRemote::new();
+        let (composite, key) = credentials();
+        let vault = Vault::new("Main").unwrap();
+        sync(&remote, "v1", &vault, &composite, &key, None).unwrap();
+
+        // Having already seen version 1, a cloud copy older than that must be refused.
+        let result = sync(&remote, "v1", &vault, &composite, &key, Some(2));
+        assert!(result.is_err(), "an older cloud version is rejected as a rollback");
+
+        // Seeing the same or a newer version is fine.
+        assert!(sync(&remote, "v1", &vault, &composite, &key, Some(1)).is_ok());
     }
 }

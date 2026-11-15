@@ -18,8 +18,8 @@ interface Store {
   sort: SortOrder;
   /** A cloud sync pass is running right now. */
   syncing: boolean;
-  /** The last cloud sync pass failed (usually offline); changes remain safe on this device. */
-  syncFailed: boolean;
+  /** Why the last cloud sync pass failed, or null. Changes stay safe on this device. */
+  syncError: string | null;
 }
 
 export const store: Store = {
@@ -32,7 +32,7 @@ export const store: Store = {
   expandedFolders: new Set(),
   sort: "title",
   syncing: false,
-  syncFailed: false,
+  syncError: null,
 };
 
 interface FolderIndex {

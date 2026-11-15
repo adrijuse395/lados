@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStatus,
+  CloudVault,
   EntryContent,
   EntryDetails,
   EntryField,
@@ -76,6 +77,7 @@ export const backend = {
   // File dialogs / vault location
   isMobileShell: () => call<boolean>("is_mobile_shell"),
   suggestedVaultPath: (name: string) => call<string>("suggested_vault_path", { name }),
+  vaultsFolder: () => call<string>("vaults_folder"),
   listDeviceVaults: () => call<RecentVault[]>("list_device_vaults"),
   pickOpenPath: (kind: FileKind, title: string) => call<string | null>("pick_open_path", { kind, title }),
   pickSavePath: (kind: FileKind, title: string, suggestedName: string | null = null) =>
@@ -106,12 +108,19 @@ export const backend = {
   setAutostart: (enabled: boolean) => call<void>("set_autostart", { enabled }),
   syncSignIn: (email: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_sign_in", { email, password, keyFile }),
+  syncRegister: (email: string, password: string, keyFile: string | null) =>
+    call<AppStatus>("sync_register", { email, password, keyFile }),
   syncSignOut: () => call<AppStatus>("sync_sign_out"),
   syncEnable: () => call<AppStatus>("sync_enable"),
   syncEnableFile: (path: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),
   syncDisable: () => call<AppStatus>("sync_disable"),
   syncDisableFile: (path: string) => call<AppStatus>("sync_disable_file", { path }),
+  syncDisableVault: (localVaultId: string) => call<AppStatus>("sync_disable_vault", { localVaultId }),
+  syncCloudVaults: () => call<CloudVault[]>("sync_cloud_vaults"),
+  syncDownload: (serverVaultId: string, folder: string, password: string, keyFile: string | null) =>
+    call<AppStatus>("sync_download", { serverVaultId, folder, password, keyFile }),
+  pickFolder: (title: string) => call<string | null>("pick_folder", { title }),
   syncNow: () => call<MergeReport>("sync_now"),
   syncDeleteAccount: () => call<AppStatus>("sync_delete_account"),
   syncStatus: () => call<SyncView>("sync_status"),

@@ -25,18 +25,26 @@ all merging happens on the user's device.
 
 Auth is a bearer token (opaque, stored hashed, 30-day TTL).
 
-`authSecret` is `Argon2id(compositeKey)` computed on the device, so a leaked credential
-table stays expensive to brute-force. Accounts created before this hardening carry
-`scheme = 'legacy'` and are silently upgraded in place on their next successful login
-(the client sends the old derivation as `legacyAuthSecret`).
+`authSecret` is `Argon2id(compositeKey, salt = f(email))` — **per-account salted** — computed on
+the device, so a leaked credential table stays expensive to brute-force and cannot be attacked
+with a single Argon2 run per guess across all accounts. Older accounts are upgraded in place on
+their next successful login (the client also sends the previous derivations).
+
+Requests are throttled per IP, per email and per account; exceeding a limit returns `429`.
 
 ### Upgrading an existing database
 
-New databases get the `scheme` column from `schema.sql`. An existing one needs:
+New databases get everything from `schema.sql`. An existing one needs each migration once:
 
 ```bash
 npx wrangler d1 execute lados-sync --remote \
   --command "ALTER TABLE accounts ADD COLUMN scheme TEXT NOT NULL DEFAULT 'legacy'"
+npx wrangler d1 execute lados-sync --remote \
+  --command "ALTER TABLE vaults ADD COLUMN vault_uuid TEXT"
+npx wrangler d1 execute lados-sync --remote \
+  --command "CREATE INDEX IF NOT EXISTS idx_vaults_uuid ON vaults(account_id, vault_uuid)"
+npx wrangler d1 execute lados-sync --remote \
+  --command "CREATE TABLE IF NOT EXISTS rate_limits (bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)"
 ```
 
 ## One-time setup (free tier — no card required)
