@@ -23,7 +23,7 @@ tauri-build = { version = "2.7", features = [] }
 custom-protocol = ["tauri/custom-protocol"]
 # Optional cloud synchronization (see docs/SYNC.md). Off by default so normal builds
 # are unchanged while the feature is developed.
-sync = ["dep:reqwest"]
+sync = ["dep:reqwest", "dep:opaque-ke", "dep:sha2_010", "dep:rand_08"]
 
 [dependencies]
 # Shared shell (tray-icon is desktop-only; see target-specific deps below)
@@ -54,6 +54,13 @@ base64 = "0.23"
 
 # Optional sync client (only compiled with the `sync` feature).
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["blocking", "json", "rustls"] }
+# OPAQUE (RFC 9807) login. Interoperates with the server's `@serenity-kit/opaque`,
+# which is this same crate compiled to WebAssembly.
+opaque-ke = { version = "4", optional = true, features = ["ristretto255"] }
+# OPAQUE's key exchange needs a digest-0.10 hash; the app's own sha2 is 0.11.
+sha2_010 = { package = "sha2", version = "0.10", optional = true }
+# OPAQUE re-exports rand 0.8 without its OS RNG; enabling it here un-gates `rngs::OsRng`.
+rand_08 = { package = "rand", version = "0.8", features = ["getrandom", "std"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
