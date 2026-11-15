@@ -628,6 +628,59 @@ pub fn sync_disable_vault(state: State<'_, AppState>, local_vault_id: String) ->
     Ok(state.status())
 }
 
+/// Deletes a cloud vault (its rows and blobs) and stops syncing it here. Local files are kept.
+#[tauri::command]
+pub async fn sync_delete_vault(app: AppHandle, server_vault_id: String) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+            crate::sync::delete_vault(&account.server_url, &account.token, &server_vault_id)?;
+            state.update_settings(|settings| {
+                settings
+                    .synced_vaults
+                    .retain(|entry| entry.server_vault_id != server_vault_id);
+            })?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, server_vault_id);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Revokes the sync sessions of every other device, keeping this one signed in.
+#[tauri::command]
+pub async fn sync_sign_out_everywhere(app: AppHandle) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+            crate::sync::sign_out_everywhere(&account.server_url, &account.token)?;
+            Ok(state.status())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
 /// Lists the cloud vaults of the signed-in account.
 #[tauri::command]
 pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<crate::sync::CloudVault>> {

@@ -139,7 +139,7 @@ function cloudItem(vault: CloudVault, present: boolean, openPath: string | null)
     ),
     present
       ? null
-      : h("button", { type: "button", class: "button small primary", onClick: () => void getCloudVault(vault) }, "Get"),
+      : h("button", { type: "button", class: "button small primary", onClick: () => void getCloudVault(vault) }, "Download"),
   );
 }
 

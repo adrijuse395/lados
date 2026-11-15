@@ -100,7 +100,7 @@ export async function openSettings(): Promise<void> {
         }
       },
     },
-    "Change…",
+    "Change",
   );
   const resetVaultsFolder = h(
     "button",

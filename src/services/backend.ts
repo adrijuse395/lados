@@ -111,6 +111,7 @@ export const backend = {
   syncRegister: (email: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_register", { email, password, keyFile }),
   syncSignOut: () => call<AppStatus>("sync_sign_out"),
+  syncSignOutEverywhere: () => call<AppStatus>("sync_sign_out_everywhere"),
   syncEnable: () => call<AppStatus>("sync_enable"),
   syncEnableFile: (path: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),
@@ -118,6 +119,7 @@ export const backend = {
   syncDisableFile: (path: string) => call<AppStatus>("sync_disable_file", { path }),
   syncDisableVault: (localVaultId: string) => call<AppStatus>("sync_disable_vault", { localVaultId }),
   syncCloudVaults: () => call<CloudVault[]>("sync_cloud_vaults"),
+  syncDeleteVault: (serverVaultId: string) => call<AppStatus>("sync_delete_vault", { serverVaultId }),
   syncDownload: (serverVaultId: string, folder: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_download", { serverVaultId, folder, password, keyFile }),
   pickFolder: (title: string) => call<string | null>("pick_folder", { title }),

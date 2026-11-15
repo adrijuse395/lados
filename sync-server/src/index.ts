@@ -14,6 +14,15 @@ export interface Env {
 
 const enc = new TextEncoder();
 
+/// Total encrypted storage an account may hold (all its vaults). A password vault is a few
+/// hundred KB, so this is very generous while still bounding abuse.
+const ACCOUNT_QUOTA_BYTES = 100 * 1024 * 1024;
+
+function bearerToken(request: Request): string | null {
+  const match = (request.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -69,10 +78,9 @@ async function startSession(env: Env, accountId: string): Promise<string> {
 }
 
 async function authenticate(env: Env, request: Request): Promise<AccountRow | null> {
-  const header = request.headers.get("authorization") || "";
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  if (!match) return null;
-  const tokenHash = await sha256Hex(match[1]);
+  const token = bearerToken(request);
+  if (!token) return null;
+  const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
     `SELECT a.id AS id, a.plan AS plan
        FROM sessions s JOIN accounts a ON a.id = s.account_id
@@ -274,13 +282,22 @@ async function putVault(env: Env, account: AccountRow, id: string, request: Requ
   if (bytes.byteLength === 0) return json({ error: "empty" }, 400);
   if (bytes.byteLength > 8 * 1024 * 1024) return json({ error: "too_large" }, 413);
 
+  const used = await env.DB.prepare(
+    "SELECT COALESCE(SUM(size), 0) AS total FROM vaults WHERE account_id = ? AND id != ?",
+  )
+    .bind(account.id, id)
+    .first<{ total: number }>();
+  if ((used?.total ?? 0) + bytes.byteLength > ACCOUNT_QUOTA_BYTES) {
+    return json({ error: "quota_exceeded" }, 413);
+  }
+
   const next = vault.version + 1;
   // Immutable, versioned blob first (an orphan is harmless), then the atomic version bump.
   await env.BLOBS.put(blobKey(id, next), bytes);
   const result = await env.DB.prepare(
-    "UPDATE vaults SET version = ?, updated_at = ? WHERE id = ? AND version = ?",
+    "UPDATE vaults SET version = ?, updated_at = ?, size = ? WHERE id = ? AND version = ?",
   )
-    .bind(next, Date.now(), id, vault.version)
+    .bind(next, Date.now(), bytes.byteLength, id, vault.version)
     .run();
   const changed = result.meta.changes ?? 0;
   if (changed === 0) return json({ error: "conflict", version: vault.version }, 409);
@@ -296,6 +313,11 @@ async function putVault(env: Env, account: AccountRow, id: string, request: Requ
 async function deleteVault(env: Env, account: AccountRow, id: string): Promise<Response> {
   const vault = await ownedVault(env, account, id);
   if (!vault) return json({ error: "not_found" }, 404);
+  // Remove the stored blobs too, so nothing is left behind in R2.
+  const listed = await env.BLOBS.list({ prefix: `vaults/${id}/` });
+  if (listed.objects.length > 0) {
+    await env.BLOBS.delete(listed.objects.map((object) => object.key));
+  }
   await env.DB.prepare("DELETE FROM vaults WHERE id = ? AND account_id = ?")
     .bind(id, account.id)
     .run();
@@ -334,6 +356,16 @@ export default {
       if (!account) return json({ error: "unauthorized" }, 401);
 
       if (path === "/account" && method === "DELETE") return await deleteAccount(env, account);
+
+      // "Sign out everywhere": revoke every session except the one making this request.
+      if (path === "/sessions" && method === "DELETE") {
+        const token = bearerToken(request);
+        const currentHash = token ? await sha256Hex(token) : "";
+        await env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND token_hash != ?")
+          .bind(account.id, currentHash)
+          .run();
+        return json({ ok: true });
+      }
 
       if (account.plan !== "active") return json({ error: "payment_required", plan: account.plan }, 402);
 

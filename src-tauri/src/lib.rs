@@ -125,6 +125,8 @@ pub fn run() {
             commands::sync_now,
             commands::sync_delete_account,
             commands::sync_cloud_vaults,
+            commands::sync_delete_vault,
+            commands::sync_sign_out_everywhere,
             commands::sync_download,
             commands::select_vault,
             commands::close_vault,

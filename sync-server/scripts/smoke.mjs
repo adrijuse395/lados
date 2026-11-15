@@ -148,6 +148,23 @@ check("the deleted account cannot log in (401)", r.status === 401);
 r = await call("DELETE", "/account", { token: tokenB });
 check("clean up the second account", r.status === 200);
 
+// ----- Sign out everywhere -----
+const soEmail = `smoke-so-${rid()}@example.com`;
+const soSecret = hex(64);
+r = await call("POST", "/auth/register", { body: { email: soEmail, authSecret: soSecret } });
+const soToken1 = r.json?.token;
+r = await call("POST", "/auth/login", { body: { email: soEmail, authSecret: soSecret } });
+const soToken2 = r.json?.token;
+check("create two sessions for one account", typeof soToken1 === "string" && typeof soToken2 === "string");
+r = await call("DELETE", "/sessions", { token: soToken2 });
+check("sign out everywhere succeeds", r.status === 200);
+r = await call("GET", "/me", { token: soToken1 });
+check("the other session is revoked (401)", r.status === 401);
+r = await call("GET", "/me", { token: soToken2 });
+check("the current session still works", r.status === 200);
+r = await call("DELETE", "/account", { token: soToken2 });
+check("clean up the sign-out account", r.status === 200);
+
 // ----- Rate limiting -----
 const rlEmail = `smoke-rl-${rid()}@example.com`;
 r = await call("POST", "/auth/register", { body: { email: rlEmail, authSecret: hex(64) } });

@@ -103,7 +103,7 @@ function signInSection(refresh: () => void): HTMLElement {
     { class: "stack" },
     h("p", {
       class: "muted",
-      text: "Sign in to keep a vault in sync across your devices, and to get your cloud vaults on this one. Your vault is encrypted on this device before it is uploaded; only your master password opens it.",
+      text: "Sign in to keep a vault in sync across your devices, and to download your cloud vaults on this one. Your vault is encrypted on this device before it is uploaded; only your master password opens it.",
     }),
     field("Email", email),
     field("Master password", password.element, { target: password.input }),
@@ -154,6 +154,26 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       toast("Stopped syncing this vault");
     });
 
+  const deleteCloudVault = (vault: CloudVault) =>
+    run(async () => {
+      const confirmed = await confirmDialog({
+        title: `Delete “${vault.name}” from the cloud?`,
+        message:
+          "This permanently deletes the cloud copy and the data stored on the server. The vault files on this computer are kept, and they stop syncing. This cannot be undone.",
+        confirmLabel: "Delete from cloud",
+        danger: true,
+      });
+      if (!confirmed) return;
+      store.status = await backend.syncDeleteVault(vault.id);
+      toast(`“${vault.name}” was deleted from the cloud`);
+    });
+
+  const signOutOtherDevices = () =>
+    run(async () => {
+      await backend.syncSignOutEverywhere();
+      toast("Signed out on your other devices");
+    });
+
   const syncNowOpen = () =>
     run(async () => {
       const report = await performSync();
@@ -202,10 +222,13 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
                 }
               }),
           },
-          "Get on this computer",
+          "Download",
         ),
       );
     }
+    actions.push(
+      h("button", { type: "button", class: "button small danger", onClick: () => void deleteCloudVault(vault) }, "Delete"),
+    );
 
     return h(
       "li",
@@ -256,6 +279,7 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         "div",
         { class: "sync-center-actions" },
         h("button", { type: "button", class: "button", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
+        h("button", { type: "button", class: "button", onClick: () => void signOutOtherDevices() }, "Sign out other devices"),
         h("button", { type: "button", class: "button", onClick: () => void signOut(refresh) }, "Sign out"),
         h("button", { type: "button", class: "button danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
       ),
@@ -307,11 +331,11 @@ export async function downloadCloudVault(vault: CloudVault): Promise<AppStatus |
         }
       },
     },
-    "Change folder…",
+    "Change folder",
   );
 
   return showDialog<AppStatus>({
-    title: `Get “${vault.name}”`,
+    title: `Download “${vault.name}”`,
     size: "medium",
     body: h(
       "div",
@@ -321,7 +345,7 @@ export async function downloadCloudVault(vault: CloudVault): Promise<AppStatus |
       field("Master password", password.element, { target: password.input }),
       field("Key file", keyFile.element, { hint: "Only if the vault was created with one." }),
     ),
-    submitLabel: "Get vault",
+    submitLabel: "Download",
     busyLabel: "Downloading…",
     onSubmit: async () => {
       if (!password.value()) {

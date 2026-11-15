@@ -21,7 +21,9 @@ all merging happens on the user's device.
 | POST | `/vaults` | `{ name }` → create a vault |
 | GET | `/vaults/:id` | `{ version, blob }` (base64) |
 | PUT | `/vaults/:id` | raw encrypted bytes + `If-Match: <version>` → `{ version }` (409 on conflict) |
-| DELETE | `/vaults/:id` | remove a vault |
+| DELETE | `/vaults/:id` | remove a vault (and its blobs) |
+| DELETE | `/sessions` | revoke every other session ("sign out everywhere") |
+| DELETE | `/account` | delete the account and all its data |
 
 Auth is a bearer token (opaque, stored hashed, 30-day TTL).
 

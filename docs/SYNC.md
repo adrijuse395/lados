@@ -354,7 +354,7 @@ device and never transmitted.
 - **Cannot read any vault.** Every query is scoped by the authenticated account; there is no
   bulk endpoint; blobs are opaque ciphertext.
 - Online credential guessing is **throttled** (fixed-window rate limits on `/auth/*` and on
-  uploads).
+  uploads), and a **per-account storage quota** (100 MB) bounds abuse.
 - **Email enumeration** is possible (register returns `409` for a taken address) — known
   limitation, to be closed with email verification.
 
@@ -379,5 +379,6 @@ device and never transmitted.
 1. **OPAQUE login** — removes the password-equivalent from the wire.
 2. **Metadata** — encrypt or drop the plaintext vault name.
 3. **Email verification** — removes enumeration and enables billing.
-4. **Password rotation and session revocation ("sign out everywhere").**
+4. **Password rotation** — changing the account password must re-key the cloud vaults; not
+   built yet. (Sessions can already be revoked: “Sign out other devices”.)
 

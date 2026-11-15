@@ -142,3 +142,23 @@ pub fn list_vaults(base: &str, token: &str) -> Result<Vec<CloudVault>> {
         })
         .collect())
 }
+
+/// Deletes a cloud vault (and its stored blobs) from the server.
+pub fn delete_vault(base: &str, token: &str, server_vault_id: &str) -> Result<()> {
+    let url = format!("{}/vaults/{}", base.trim_end_matches('/'), server_vault_id);
+    let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => Ok(()),
+        _ => Err(Error::System(format!("could not delete the vault ({})", response.status))),
+    }
+}
+
+/// Revokes every session of the account except this device's ("sign out everywhere").
+pub fn sign_out_everywhere(base: &str, token: &str) -> Result<()> {
+    let url = format!("{}/sessions", base.trim_end_matches('/'));
+    let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => Ok(()),
+        _ => Err(Error::System(format!("could not sign out other devices ({})", response.status))),
+    }
+}

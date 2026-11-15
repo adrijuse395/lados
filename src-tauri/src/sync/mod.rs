@@ -11,7 +11,7 @@ mod engine;
 mod http;
 mod remote;
 
-pub use account::{CloudVault, DEFAULT_SERVER, auth_secret, delete_account, ensure_vault, legacy_auth_secret, list_vaults, login, previous_auth_secret, register};
+pub use account::{CloudVault, DEFAULT_SERVER, auth_secret, delete_account, delete_vault, ensure_vault, legacy_auth_secret, list_vaults, login, previous_auth_secret, register, sign_out_everywhere};
 pub use engine::{SyncOutcome, sync};
 pub use http::HttpRemote;
 pub use remote::{MemoryRemote, PutOutcome, Remote, RemoteVault};

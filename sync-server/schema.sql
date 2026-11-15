@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS vaults (
   account_id  TEXT NOT NULL,
   name        TEXT NOT NULL,
   vault_uuid  TEXT,                            -- the vault's own id: its identity
+  size        INTEGER NOT NULL DEFAULT 0,      -- current blob size, for the account quota
   version     INTEGER NOT NULL DEFAULT 0,
   updated_at  INTEGER NOT NULL
 );

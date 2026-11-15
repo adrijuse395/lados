@@ -113,6 +113,7 @@ impl Remote for HttpRemote {
             },
             401 => Err(Error::Locked),
             402 => Err(Error::invalid("Your sync subscription is not active")),
+            413 => Err(Error::invalid("The cloud storage for this account is full")),
             _ => Err(Error::System(format!("sync put failed ({})", response.status))),
         }
     }
