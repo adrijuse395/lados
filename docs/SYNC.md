@@ -172,6 +172,9 @@ enable sync, and says so in the UI. (A later version may allow key files with an
 
 ## 11. Pricing and billing (proposed)
 
+> Full design — seller/MoR, entitlement states, webhook contract, identity and legal steps —
+> lives in [`BILLING.md`](./BILLING.md). The notes below are the short version.
+
 - **One annual plan, ~€12/year** (proposed). Avoid monthly charges: fixed per-transaction
   fees swallow small amounts.
 - **Merchant of Record:** Paddle (or Lemon Squeezy). They are the legal seller, handle
