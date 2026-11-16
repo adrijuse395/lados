@@ -138,11 +138,14 @@ version, and be full bleed. To capture one:
 
 (For reference: the pill sits next to a login field; the picker lists several matching logins.)
 
-### Hosting the privacy policy
+### Privacy policy URL
 
-Both stores ask for a **Privacy policy URL** (a public page). Two options:
+The policy is published on the marketing site (**lados-web**) as `privacy.html`, served at
+**`/privacy`** (Vercel's `cleanUrls`). Paste the site's domain in the dashboards:
 
-- **Quick:** the rendered GitHub page
-  `https://github.com/adrijuse395/lados/blob/main/docs/PRIVACY.md`
-- **Cleaner:** enable GitHub Pages and link `https://adrijuse395.github.io/lados/PRIVACY.md`
-  (or a small HTML page).
+```
+https://<your-domain>/privacy
+```
+
+The Markdown source of truth is `docs/PRIVACY.md`; the site page mirrors it. Fallback link if
+reviewers need one: `https://github.com/adrijuse395/lados/blob/main/docs/PRIVACY.md`.

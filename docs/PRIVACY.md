@@ -2,6 +2,9 @@
 
 _Last updated: 16 November 2026_
 
+> This is the source of truth. The same policy is published for the stores at
+> `https://<your-domain>/privacy` (the `lados-web` site, `privacy.html`). Keep both in step.
+
 Lados is a local-first password manager. Its design goal is that **your passwords never
 leave your computer** unless you deliberately turn on the optional, end-to-end encrypted
 Lados Sync.

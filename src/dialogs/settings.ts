@@ -1,5 +1,5 @@
 import { applyTheme } from "../app";
-import { extensionInstallDialog } from "./browser-extension";
+import { extensionInstallDialog, openExtensionStore } from "./browser-extension";
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
@@ -163,7 +163,14 @@ export async function openSettings(): Promise<void> {
             h("h3", { text: "Browser fill (desktop)" }),
             h(
               "p",
-              { class: "muted", text: "The Firefox extension fills login forms from this vault while Lados is running and the vault is unlocked." },
+              { class: "muted" },
+              "The Firefox extension fills login forms from this vault while Lados is running and the vault is unlocked. Get it from ",
+              h(
+                "button",
+                { type: "button", class: "link-button", onClick: () => void openExtensionStore("firefox") },
+                "addons.mozilla.org/firefox/addon/lados",
+              ),
+              ".",
             ),
             h(
               "button",

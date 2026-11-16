@@ -69,6 +69,11 @@ function browserButton(id: BrowserId): HTMLElement {
   );
 }
 
+/** Opens a browser's published store page in the user's default browser. */
+export async function openExtensionStore(id: BrowserId = "firefox"): Promise<void> {
+  await openStore(id);
+}
+
 /** The install dialog, shared by the first-run prompt and the Settings button. */
 export async function extensionInstallDialog(): Promise<void> {
   await showDialog<"done">({
