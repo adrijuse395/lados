@@ -9,7 +9,7 @@ import { resetVaultState, setVault, store } from "./state/store";
 import type { AppStatus, MergeReport, Theme } from "./types";
 import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
-import { errorMessage } from "./ui/toast";
+import { errorMessage, toast } from "./ui/toast";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
 
 function root(): HTMLElement {
@@ -67,6 +67,16 @@ export async function performSync(): Promise<MergeReport> {
     return report;
   } catch (error) {
     store.syncError = errorMessage(error);
+    if (error instanceof BackendError && error.kind === "sessionExpired") {
+      // The session ended (for example the master password changed elsewhere): sign out locally
+      // and tell the user, instead of failing silently on every later sync.
+      try {
+        store.status = await backend.syncRefresh();
+      } catch {
+        // Ignore: the message below is what matters.
+      }
+      toast(errorMessage(error), "error", 8000);
+    }
     throw error;
   } finally {
     syncRunning = false;

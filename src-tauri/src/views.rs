@@ -50,6 +50,8 @@ pub struct SyncView {
     pub this_vault_synced: bool,
     /// Last successful sync of the open vault, in Unix milliseconds.
     pub last_synced_at: Option<i64>,
+    /// When the account master password last changed, in Unix milliseconds.
+    pub password_changed_at: Option<i64>,
     /// Cloud vaults known to this device, grouped by the vault's own identity.
     pub cloud: Vec<CloudVaultView>,
     /// Vaults on this device that are not synced.

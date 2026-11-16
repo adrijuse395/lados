@@ -9,6 +9,9 @@ pub enum Error {
     #[error("Wrong master password or key file")]
     InvalidCredentials,
 
+    #[error("Your Lados Sync session has ended. Sign in again — if you changed your master password on another device, use the new one.")]
+    SessionExpired,
+
     #[error("This file is not a Lados vault")]
     NotAVault,
 
@@ -59,6 +62,7 @@ impl Error {
     fn kind(&self) -> &'static str {
         match self {
             Error::InvalidCredentials => "invalidCredentials",
+            Error::SessionExpired => "sessionExpired",
             Error::NotAVault => "notAVault",
             Error::UnsupportedVersion(_) => "unsupportedVersion",
             Error::Corrupted => "corrupted",

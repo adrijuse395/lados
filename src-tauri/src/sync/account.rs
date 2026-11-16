@@ -86,13 +86,16 @@ pub fn ensure_vault(base: &str, token: &str, vault_uuid: &str, name_cipher: &str
     let root = base.trim_end_matches('/');
     let body = json!({ "vaultUuid": vault_uuid, "nameCipher": name_cipher });
     let created = http::send(Method::POST, &format!("{root}/vaults"), Some(token), None, Some(&body), None)?;
-    created
-        .value
-        .as_ref()
-        .and_then(|value| value.get("id"))
-        .and_then(|id| id.as_str())
-        .map(str::to_string)
-        .ok_or_else(|| Error::System(format!("could not create vault ({})", created.status)))
+    match created.status {
+        401 => Err(Error::SessionExpired),
+        _ => created
+            .value
+            .as_ref()
+            .and_then(|value| value.get("id"))
+            .and_then(|id| id.as_str())
+            .map(str::to_string)
+            .ok_or_else(|| Error::System(format!("could not create vault ({})", created.status))),
+    }
 }
 
 /// Replaces the encrypted label of an existing cloud vault. Used when the label is re-sealed
@@ -103,7 +106,34 @@ pub fn set_vault_label(base: &str, token: &str, vault_id: &str, name_cipher: &st
     let response = http::send(Method::PATCH, &url, Some(token), None, Some(&body), None)?;
     match response.status {
         200 => Ok(()),
+        401 => Err(Error::SessionExpired),
         _ => Err(Error::System(format!("could not update the vault label ({})", response.status))),
+    }
+}
+
+/// The account as the server sees it (never includes anything secret).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountInfo {
+    pub plan: String,
+    /// When the master password last changed, in Unix milliseconds. `None` if it never did.
+    pub password_changed_at: Option<i64>,
+}
+
+/// Reads the account: its plan and when its master password last changed.
+pub fn me(base: &str, token: &str) -> Result<AccountInfo> {
+    let url = format!("{}/me", base.trim_end_matches('/'));
+    let response = http::send(Method::GET, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => {
+            let value = response.value.unwrap_or(serde_json::Value::Null);
+            Ok(AccountInfo {
+                plan: value.get("plan").and_then(serde_json::Value::as_str).unwrap_or("active").to_string(),
+                password_changed_at: value.get("passwordChangedAt").and_then(serde_json::Value::as_i64),
+            })
+        }
+        401 => Err(Error::SessionExpired),
+        _ => Err(Error::System(format!("could not read the account ({})", response.status))),
     }
 }
 
@@ -113,6 +143,7 @@ pub fn delete_account(base: &str, token: &str) -> Result<()> {
     let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
     match response.status {
         200 => Ok(()),
+        401 => Err(Error::SessionExpired),
         _ => Err(Error::System(format!("could not delete the account ({})", response.status))),
     }
 }
@@ -133,6 +164,9 @@ pub struct CloudVault {
 pub fn list_vaults(base: &str, token: &str) -> Result<Vec<CloudVault>> {
     let url = format!("{}/vaults", base.trim_end_matches('/'));
     let response = http::send(Method::GET, &url, Some(token), None, None, None)?;
+    if response.status == 401 {
+        return Err(Error::SessionExpired);
+    }
     if response.status != 200 {
         return Err(Error::System(format!("could not list vaults ({})", response.status)));
     }
@@ -162,6 +196,7 @@ pub fn delete_vault(base: &str, token: &str, server_vault_id: &str) -> Result<()
     let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
     match response.status {
         200 => Ok(()),
+        401 => Err(Error::SessionExpired),
         _ => Err(Error::System(format!("could not delete the vault ({})", response.status))),
     }
 }
@@ -172,6 +207,7 @@ pub fn sign_out_everywhere(base: &str, token: &str) -> Result<()> {
     let response = http::send(Method::DELETE, &url, Some(token), None, None, None)?;
     match response.status {
         200 => Ok(()),
+        401 => Err(Error::SessionExpired),
         _ => Err(Error::System(format!("could not sign out other devices ({})", response.status))),
     }
 }

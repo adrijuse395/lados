@@ -12,6 +12,7 @@ import { h, mount, type Child } from "../ui/dom";
 import { logo, svgIcon, type IconName } from "../ui/icons";
 import { confirmDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
+import { relativeTime } from "../utils/format";
 
 async function selectVault(path: string): Promise<void> {
   try {
@@ -236,6 +237,9 @@ export function renderWelcome(container: HTMLElement): void {
                 { class: "welcome-sync muted" },
                 svgIcon("cloudCheck"),
                 h("span", { text: `Signed in as ${status?.sync.email}. ` }),
+                status?.sync.passwordChangedAt
+                  ? h("span", { text: `Master password changed ${relativeTime(status.sync.passwordChangedAt)}. ` })
+                  : null,
                 h("button", { type: "button", class: "link-button", onClick: () => void openAccount() }, "Sync settings"),
               )
             : h(

@@ -70,6 +70,7 @@ interface AccountRow {
   id: string;
   email: string;
   plan: string;
+  password_changed_at: number | null;
 }
 
 /// Creates a fresh session token for an account and returns it.
@@ -91,7 +92,7 @@ async function authenticate(env: Env, request: Request): Promise<AccountRow | nu
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.email AS email, a.plan AS plan
+    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.password_changed_at AS password_changed_at
        FROM sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
@@ -318,14 +319,22 @@ async function opaqueUpgradeStart(env: Env, account: AccountRow, request: Reques
 async function opaqueUpgradeFinish(env: Env, account: AccountRow, request: Request): Promise<Response> {
   const body = await readJson<{ registrationRecord?: string }>(request);
   if (!body?.registrationRecord) return json({ error: "invalid_request" }, 400);
-  await env.DB.prepare("UPDATE accounts SET opaque_record = ?, scheme = 'opaque' WHERE id = ?")
-    .bind(body.registrationRecord, account.id)
+  // A legacy account being converted to OPAQUE has not really changed its password; an account
+  // that is already OPAQUE and registers again has. Only the latter gets a new timestamp.
+  const before = await env.DB.prepare("SELECT scheme FROM accounts WHERE id = ?")
+    .bind(account.id)
+    .first<{ scheme: string }>();
+  const changedAt = before?.scheme === "opaque" ? Date.now() : null;
+  await env.DB.prepare(
+    "UPDATE accounts SET opaque_record = ?, scheme = 'opaque', password_changed_at = COALESCE(?, password_changed_at) WHERE id = ?",
+  )
+    .bind(body.registrationRecord, changedAt, account.id)
     .run();
-  return json({ ok: true });
+  return json({ ok: true, passwordChangedAt: changedAt ?? account.password_changed_at ?? null });
 }
 
 async function me(env: Env, account: AccountRow): Promise<Response> {
-  return json({ id: account.id, plan: account.plan });
+  return json({ id: account.id, plan: account.plan, passwordChangedAt: account.password_changed_at ?? null });
 }
 
 async function listVaults(env: Env, account: AccountRow): Promise<Response> {

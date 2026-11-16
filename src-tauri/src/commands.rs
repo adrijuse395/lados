@@ -496,6 +496,19 @@ fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
     crate::sync::opaque_upgrade_finish(base, token, &record)
 }
 
+/// Remembers when the account's master password last changed, so the interface can tell the
+/// user which password to use. Best effort: a network hiccup must never block a sign-in.
+#[cfg(feature = "sync")]
+fn remember_password_changed_at(state: &AppState, base: &str, token: &str) {
+    if let Ok(info) = crate::sync::me(base, token) {
+        let _ = state.update_settings(|settings| {
+            if let Some(account) = settings.sync_account.as_mut() {
+                account.password_changed_at = info.password_changed_at;
+            }
+        });
+    }
+}
+
 /// Whether `composite` is the account's master password. Verified by attempting an OPAQUE
 /// login, falling back to the legacy login for accounts not yet upgraded. Nothing secret has
 /// to be remembered between sessions.
@@ -562,11 +575,13 @@ pub async fn sync_sign_in(
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {
-                    server_url: base,
+                    server_url: base.clone(),
                     email,
-                    token,
+                    token: token.clone(),
+                    password_changed_at: None,
                 });
             })?;
+            remember_password_changed_at(&state, &base, &token);
             Ok(state.status())
         })
         .await
@@ -609,11 +624,13 @@ pub async fn sync_register(
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {
-                    server_url: base,
+                    server_url: base.clone(),
                     email,
-                    token,
+                    token: token.clone(),
+                    password_changed_at: None,
                 });
             })?;
+            remember_password_changed_at(&state, &base, &token);
             Ok(state.status())
         })
         .await
@@ -1139,6 +1156,46 @@ fn emit_password_change(app: &AppHandle, step: &str, index: usize, total: usize,
     );
 }
 
+/// Refreshes what this device knows about the account. If the session is no longer valid — for
+/// example because the master password was changed on another device — it signs out locally, so
+/// the interface can ask the user to sign in again with the current password.
+#[tauri::command]
+pub async fn sync_refresh(app: AppHandle) -> Result<AppStatus> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let Some(account) = state.settings().sync_account.clone() else {
+                return Ok(state.status());
+            };
+            match crate::sync::me(&account.server_url, &account.token) {
+                Ok(info) => {
+                    state.update_settings(|settings| {
+                        if let Some(account) = settings.sync_account.as_mut() {
+                            account.password_changed_at = info.password_changed_at;
+                        }
+                    })?;
+                    Ok(state.status())
+                }
+                Err(Error::SessionExpired) => {
+                    state.update_settings(|settings| {
+                        settings.sync_account = None;
+                        settings.sync_label_key = None;
+                    })?;
+                    Ok(state.status())
+                }
+                Err(error) => Err(error),
+            }
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
 /// Changes the account master password and re-encrypts every synced vault under it, in one
 /// blocking operation. Nothing decrypted ever leaves the device: each vault is decrypted here,
 /// re-encrypted with the new password and only then uploaded. Cloud vaults that are not on this
@@ -1292,9 +1349,12 @@ pub async fn change_master_password(
             emit_password_change(&app, "sessions", total, total, "");
             let _ = crate::sync::sign_out_everywhere(&base, &token);
 
-            // 6. Remember the new label key.
+            // 6. Remember the new label key and when the password changed.
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(crypto::secret_to_base64(&new_label));
+                if let Some(account) = settings.sync_account.as_mut() {
+                    account.password_changed_at = Some(chrono::Utc::now().timestamp_millis());
+                }
             })?;
 
             emit_password_change(&app, "done", total, total, "");

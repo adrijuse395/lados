@@ -87,6 +87,9 @@ pub struct SyncAccount {
     pub email: String,
     /// Bearer token. Kept local; never written to the vault.
     pub token: String,
+    /// When the master password last changed, in Unix milliseconds. Cached from the server so
+    /// the interface can remind the user which password to use.
+    pub password_changed_at: Option<i64>,
 }
 
 /// A vault that is bound to a server vault (vault level).

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   verifier      TEXT NOT NULL,
   scheme        TEXT NOT NULL DEFAULT 'legacy',  -- legacy | argon2 | argon2v2 | opaque
   opaque_record TEXT,                            -- OPAQUE registration record
+  password_changed_at INTEGER,                   -- when the master password last changed
   plan          TEXT NOT NULL DEFAULT 'active',  -- active | expired
   created_at    INTEGER NOT NULL
 );

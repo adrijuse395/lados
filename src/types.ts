@@ -10,6 +10,7 @@ export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image";
 
 export type ErrorKind =
   | "invalidCredentials"
+  | "sessionExpired"
   | "notAVault"
   | "unsupportedVersion"
   | "corrupted"
@@ -84,6 +85,8 @@ export interface SyncView {
   thisVaultSynced: boolean;
   /** Last successful sync of the open vault, in Unix milliseconds. */
   lastSyncedAt: number | null;
+  /** When the account master password last changed, in Unix milliseconds. */
+  passwordChangedAt: number | null;
   /** Cloud vaults known to this device, grouped by the vault's own identity. */
   cloud: CloudVaultView[];
   /** Vaults on this device that are not synced. */

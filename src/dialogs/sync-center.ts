@@ -3,7 +3,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { performSync } from "../app";
-import { backend } from "../services/backend";
+import { backend, isCredentialError } from "../services/backend";
 import { store } from "../state/store";
 import type { AppStatus, CloudVault, LocalVaultView } from "../types";
 import { field, fileNameOf, keyFileField, passwordInput } from "../ui/controls";
@@ -134,6 +134,15 @@ export async function openSyncCenter(): Promise<void> {
   const container = h("div", { class: "stack sync-center" });
 
   const refresh = async () => {
+    // Ask the server about the account first: this is where a session that ended on another
+    // device (for example after a master-password change) shows up, so we can ask to sign in.
+    if (store.status?.sync.loggedIn) {
+      try {
+        store.status = await backend.syncRefresh();
+      } catch {
+        // Offline: keep what we already know about the account.
+      }
+    }
     const sync = store.status?.sync;
     if (!sync?.loggedIn) {
       mount(container, signInSection(() => void refresh()));
@@ -146,7 +155,7 @@ export async function openSyncCenter(): Promise<void> {
   await refresh();
   await showDialog<true>({
     title: "Lados Sync",
-    size: "medium",
+    size: "large",
     body: container,
     hideCancel: true,
     submitLabel: "Done",
@@ -205,7 +214,11 @@ function signInSection(refresh: () => void): HTMLElement {
       toast(mode === "up" ? "Account created" : "Signed in to Lados Sync", "success");
       refresh();
     } catch (failure) {
-      toastError(failure);
+      if (isCredentialError(failure)) {
+        showError("Incorrect email or password. If you changed your master password on another device, sign in with the new one.");
+      } else {
+        toastError(failure);
+      }
       setBusy(false);
     }
   };
@@ -328,16 +341,42 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       );
     });
 
-  const cloudRows = cloud.map((vault) => {
+  // The sync map: one row per cloud vault, linking the cloud node to this device.
+  const mapRows = cloud.map((vault) => {
     const device = sync.cloud.find((group) => group.localVaultId === vault.vaultUuid);
     const present = device?.present ?? false;
     const isOpen = !!openPath && (device?.copies.includes(openPath) ?? false);
     const when = device?.lastSyncedAt ? relativeTime(device.lastSyncedAt) : null;
-    const status = present ? (when ? `Synced · ${when}` : "Not synced yet") : "Not on this device";
 
-    const actions: Child[] = [];
+    const cloudNode = h(
+      "div",
+      { class: "sync-node sync-node-cloud" },
+      h("span", { class: ["sync-node-icon", present && "on"] }, svgIcon(present ? "cloudCheck" : "cloud")),
+      h(
+        "div",
+        { class: "sync-node-text" },
+        h("span", { class: "sync-node-name truncate", title: vault.name, text: vault.name }),
+        h("span", {
+          class: "sync-node-detail",
+          text: present ? (when ? `Synced · ${when}` : "Synced") : "In the cloud only",
+        }),
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "icon-button small",
+          title: `Delete “${vault.name}” from the cloud`,
+          "aria-label": "Delete from the cloud",
+          onClick: () => void deleteCloudVault(vault),
+        },
+        svgIcon("trash"),
+      ),
+    );
+
+    const deviceActions: Child[] = [];
     if (present) {
-      actions.push(
+      deviceActions.push(
         h(
           "button",
           {
@@ -347,12 +386,10 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
           },
           "Sync now",
         ),
-      );
-      actions.push(
         h("button", { type: "button", class: "button small", onClick: () => void stopSyncing(vault.vaultUuid ?? vault.id) }, "Stop syncing"),
       );
     } else {
-      actions.push(
+      deviceActions.push(
         h(
           "button",
           {
@@ -371,112 +408,145 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         ),
       );
     }
-    actions.push(
-      h("button", { type: "button", class: "button small danger", onClick: () => void deleteCloudVault(vault) }, "Delete"),
+
+    const deviceNode = h(
+      "div",
+      { class: ["sync-node", "sync-node-device", !present && "empty"] },
+      present && device
+        ? h(
+            "div",
+            { class: "sync-node-text" },
+            ...device.copies.map((copy) =>
+              h(
+                "span",
+                { class: "sync-device-copy", title: copy },
+                svgIcon("monitor", "icon sync-device-copy-icon"),
+                h("span", { class: "truncate", text: fileNameOf(copy) }),
+              ),
+            ),
+          )
+        : h("div", { class: "sync-node-text" }, h("span", { class: "sync-node-detail", text: "Not on this device" })),
+      h("div", { class: "sync-node-actions" }, deviceActions),
     );
 
-    return h(
-      "li",
-      { class: "sync-vault-row" },
-      svgIcon(present ? "cloudCheck" : "cloud", "icon sync-vault-icon"),
-      h(
-        "div",
-        { class: "sync-vault-text" },
-        h("span", { class: "sync-vault-name truncate", text: vault.name }),
-        h("span", { class: ["sync-vault-status", present && "synced"], text: status }),
-        present && device ? h("span", { class: "sync-vault-copies", text: `This device: ${device.copies.map(fileNameOf).join(", ")}` }) : null,
-      ),
-      h("div", { class: "sync-vault-actions" }, actions),
+    const state = present ? (when ? "synced" : "pending") : "missing";
+    const link = h(
+      "div",
+      { class: "sync-link", dataset: { state }, role: "presentation" },
+      h("span", { class: "sync-link-track" }),
+      h("span", { class: "sync-link-dot" }),
     );
+
+    return h("div", { class: "sync-map-row" }, cloudNode, link, deviceNode);
   });
 
-  const localRows = sync.local.map((vault: LocalVaultView) =>
+  const accountCard = h(
+    "section",
+    { class: "sync-card sync-account" },
     h(
-      "li",
-      { class: "sync-vault-row" },
-      svgIcon("cloud", "icon sync-vault-icon"),
+      "div",
+      { class: "sync-account-head" },
+      h("span", { class: "sync-account-avatar" }, svgIcon("cloudCheck")),
       h(
         "div",
-        { class: "sync-vault-text" },
-        h("span", { class: "sync-vault-name truncate", text: vault.fileName }),
-        h("span", { class: "sync-vault-status", text: "Not synced · on this device only" }),
-      ),
-      h(
-        "div",
-        { class: "sync-vault-actions" },
+        { class: "sync-account-id" },
+        h("span", { class: "sync-account-email truncate", title: sync.email ?? "", text: sync.email ?? "" }),
         h(
-          "button",
-          { type: "button", class: "button small primary", onClick: () => void syncCopy(vault.path, "Sync this vault") },
-          "Sync this vault",
+          "span",
+          { class: "sync-account-meta" },
+          h("span", { class: "chip chip-success" }, "Signed in"),
+          sync.passwordChangedAt
+            ? h("span", { class: "muted", text: `Master password changed ${relativeTime(sync.passwordChangedAt)}` })
+            : null,
         ),
       ),
     ),
+    h(
+      "div",
+      { class: "sync-actions" },
+      h("button", { type: "button", class: "button small", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
+      h("button", { type: "button", class: "button small", onClick: () => void changeMasterPassword(refresh) }, "Change master password"),
+      h("button", { type: "button", class: "button small", onClick: () => void signOutOtherDevices() }, "Sign out other devices"),
+      h("button", { type: "button", class: "button small", onClick: () => void signOut(refresh) }, "Sign out"),
+      h("button", { type: "button", class: "button small danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
+    ),
   );
 
-  return [
+  const mapCard = h(
+    "section",
+    { class: "sync-card sync-map-card" },
+    h("h3", { class: "sync-card-title" }, "Where your vaults are"),
     h(
-      "section",
-      { class: "sync-center-section" },
-      h("h3", { text: "Account" }),
-      h("p", { class: "muted", text: `Signed in as ${sync.email}` }),
-      h("p", { class: "muted", text: "To use a different account, sign out and sign in with the other email." }),
-      h(
-        "div",
-        { class: "sync-center-actions" },
-        h("button", { type: "button", class: "button", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
-        h("button", { type: "button", class: "button", onClick: () => void changeMasterPassword(refresh) }, "Change master password"),
-        h("button", { type: "button", class: "button", onClick: () => void signOutOtherDevices() }, "Sign out other devices"),
-        h("button", { type: "button", class: "button", onClick: () => void signOut(refresh) }, "Sign out"),
-        h("button", { type: "button", class: "button danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
-      ),
+      "div",
+      { class: "sync-map-head" },
+      h("span", { class: "sync-map-lane" }, svgIcon("cloud"), "Cloud"),
+      h("span", { class: "sync-map-lane sync-map-lane-center" }),
+      h("span", { class: "sync-map-lane" }, svgIcon("monitor"), "This device"),
     ),
-    h(
-      "section",
-      { class: "sync-center-section" },
-      h("h3", { text: "Cloud vaults" }),
-      h("p", {
-        class: "muted",
-        text: "Every vault on your account, in the cloud. A vault can be on this computer or on another one.",
-      }),
-      cloudRows.length > 0 ? h("ul", { class: "sync-vault-list" }, cloudRows) : h("p", { class: "muted", text: "No vaults are synced yet." }),
-      needsNames
-        ? h(
-            "div",
-            { class: "notice warning" },
-            svgIcon("warning"),
-            h("span", { text: "Some vault names are still stored without encryption." }),
+    mapRows.length > 0
+      ? h("div", { class: "sync-map-body" }, mapRows)
+      : h("p", { class: "sync-empty", text: "No vaults are synced yet. Use “Sync this vault” below." }),
+    needsNames
+      ? h(
+          "div",
+          { class: "notice warning" },
+          svgIcon("warning"),
+          h("span", { text: "Some vault names are still stored without encryption." }),
+          h(
+            "button",
+            {
+              type: "button",
+              class: "button small",
+              onClick: () =>
+                void run(async () => {
+                  store.status = await backend.resyncLabels();
+                  toast("Vault names are now encrypted", "success");
+                }),
+            },
+            "Encrypt names",
+          ),
+        )
+      : null,
+    store.syncError
+      ? h("div", { class: "notice warning" }, svgIcon("warning"), h("span", { text: store.syncError }))
+      : null,
+  );
+
+  const deviceCard = h(
+    "section",
+    { class: "sync-card" },
+    h("h3", { class: "sync-card-title" }, "On this device, not synced"),
+    sync.local.length > 0
+      ? h(
+          "ul",
+          { class: "sync-device-list" },
+          sync.local.map((vault: LocalVaultView) =>
             h(
-              "button",
-              {
-                type: "button",
-                class: "button small",
-                onClick: () =>
-                  void run(async () => {
-                    store.status = await backend.resyncLabels();
-                    toast("Vault names are now encrypted", "success");
-                  }),
-              },
-              "Encrypt names",
+              "li",
+              { class: "sync-device-row" },
+              h("span", { class: "sync-node-icon" }, svgIcon("lock")),
+              h(
+                "div",
+                { class: "sync-node-text" },
+                h("span", { class: "sync-node-name truncate", title: vault.path, text: vault.fileName }),
+                h("span", { class: "sync-node-detail", text: "Kept on this computer only" }),
+              ),
+              h(
+                "button",
+                { type: "button", class: "button small primary", onClick: () => void syncCopy(vault.path, "Sync this vault") },
+                "Sync this vault",
+              ),
             ),
-          )
-        : null,
-      store.syncError
-        ? h("div", { class: "notice warning" }, svgIcon("warning"), h("span", { text: store.syncError }))
-        : null,
-    ),
-    h(
-      "section",
-      { class: "sync-center-section" },
-      h("h3", { text: "On this device, not synced" }),
-      localRows.length > 0
-        ? h("ul", { class: "sync-vault-list" }, localRows)
-        : h("p", { class: "muted", text: "Every vault on this device is synced." }),
-      h("p", {
-        class: "muted",
-        text: "Syncing keeps the vault on this device and uploads an encrypted copy after every save; it is merged on your device, never on the server.",
-      }),
-    ),
-  ];
+          ),
+        )
+      : h("p", { class: "sync-empty", text: "Every vault on this device is synced." }),
+    h("p", {
+      class: "sync-note",
+      text: "Syncing keeps the vault here and uploads an encrypted copy after every save; it is merged on your device, never on the server.",
+    }),
+  );
+
+  return [accountCard, mapCard, deviceCard];
 }
 
 /** Asks for the master password and a folder, then downloads the cloud vault into it. */

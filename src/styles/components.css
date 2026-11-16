@@ -200,81 +200,282 @@
 }
 
 /* The dedicated "Lados Sync" space. */
-.sync-center-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-top: 4px;
-}
-
-.sync-center-section:not(:first-child) {
-  margin-top: 10px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-
-.sync-center-section h3 {
-  font-size: 13px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-}
-
 .sync-center-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.sync-vault-list {
+.sync-card {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-small);
+}
+
+.sync-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+/* Account card */
+.sync-account-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sync-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-soft-text);
+}
+
+.sync-account-avatar .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.sync-account-id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sync-account-email {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.sync-account-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.chip-success {
+  color: var(--success);
+}
+
+.sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* The cloud ⇄ device schema */
+.sync-map-head,
+.sync-map-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr);
+  align-items: center;
+}
+
+.sync-map-head {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.sync-map-lane {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
+}
+
+.sync-map-lane .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.sync-map-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+}
+
+.sync-node-device.empty {
+  justify-content: space-between;
+  border-style: dashed;
+  background: transparent;
+}
+
+.sync-node-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  color: var(--text-muted);
+}
+
+.sync-node-icon.on {
+  color: var(--success);
+}
+
+.sync-node-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.sync-node-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sync-node-name {
+  font-weight: 600;
+}
+
+.sync-node-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sync-node-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.sync-device-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.sync-device-copy-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-faint);
+}
+
+/* The connector between the cloud node and this device. */
+.sync-link {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 44px;
+}
+
+.sync-link-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.sync-link[data-state="synced"] .sync-link-track {
+  background: var(--success);
+}
+
+.sync-link[data-state="pending"] .sync-link-track {
+  background: var(--warning);
+}
+
+.sync-link[data-state="missing"] .sync-link-track {
+  background: repeating-linear-gradient(90deg, var(--border-strong) 0 5px, transparent 5px 10px);
+}
+
+.sync-link-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  box-shadow: 0 0 0 4px var(--surface-raised);
+}
+
+.sync-link[data-state="synced"] .sync-link-dot {
+  background: var(--success);
+}
+
+.sync-link[data-state="pending"] .sync-link-dot {
+  background: var(--warning);
+}
+
+/* On this device, not synced */
+.sync-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.sync-vault-row {
+.sync-device-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 9px 11px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 10px;
   background: var(--surface-sunken);
 }
 
-.sync-vault-icon {
-  width: 18px;
-  height: 18px;
-  flex: none;
+.sync-empty {
+  margin: 0;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
-.sync-vault-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-}
-
-.sync-vault-name {
-  font-weight: 600;
-}
-
-.sync-vault-status {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.sync-vault-status.synced {
-  color: var(--success);
-}
-
-.sync-vault-copies {
+.sync-note {
+  margin: 0;
   font-size: 12px;
   color: var(--text-muted);
 }
@@ -319,12 +520,6 @@
 
 .recent-item.cloud-missing .recent-icon {
   color: var(--text-faint);
-}
-
-.sync-vault-actions {
-  display: flex;
-  gap: 6px;
-  flex: none;
 }
 
 /* Per-vault marker in the recent-vaults list. */

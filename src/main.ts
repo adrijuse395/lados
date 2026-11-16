@@ -68,6 +68,14 @@ async function start(): Promise<void> {
   });
 
   await showStatus(await backend.getStatus());
+  // Refresh what we know about the account, so the start screen can tell that a session ended
+  // (for example, because the master password changed on another device).
+  if (store.status?.sync.loggedIn) {
+    void backend
+      .syncRefresh()
+      .then((status) => showStatus(status))
+      .catch(() => undefined);
+  }
   // Do not block startup on the network; offer an update only when one exists.
   void maybeOfferAppUpdate();
 }

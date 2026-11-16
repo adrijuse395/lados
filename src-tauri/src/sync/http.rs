@@ -89,7 +89,7 @@ impl Remote for HttpRemote {
                 Ok(Some(RemoteVault { version, bytes }))
             }
             404 => Ok(None),
-            401 => Err(Error::Locked),
+            401 => Err(Error::SessionExpired),
             _ => Err(Error::System(format!("sync get failed ({})", response.status))),
         }
     }
@@ -111,7 +111,7 @@ impl Remote for HttpRemote {
                 Some(current) => Ok(PutOutcome::Conflict { current }),
                 None => Err(Error::System("sync conflict without a current copy".into())),
             },
-            401 => Err(Error::Locked),
+            401 => Err(Error::SessionExpired),
             402 => Err(Error::invalid("Your sync subscription is not active")),
             413 => Err(Error::invalid("The cloud storage for this account is full")),
             _ => Err(Error::System(format!("sync put failed ({})", response.status))),
