@@ -4,8 +4,45 @@ Copy‑paste fields for the **Chrome Web Store** and **Microsoft Edge Add‑ons*
 Firefox (AMO) is already published; its fields are the same.
 
 - Package: `browser-extension/build/lados-chrome.zip` (rebuild with `python3 scripts/build-extension.py`)
-- Version: `0.3.0` (from `manifest.chrome.json`)
+- Version: `0.3.1` (from `manifest.chrome.json`)
 - Icon: `browser-extension/icons/icon-128.png`
+
+---
+
+## Firefox (AMO) 0.3.1 — release notes & notes to reviewer
+
+**Release notes** (shown to users):
+
+```
+Updated the project link to the add-on's new home on GitHub (github.com/ladospwm/lados). No
+functional changes in this version.
+```
+
+**Notes to reviewer:**
+
+```
+Metadata-only update — no code changes.
+
+Changed: the manifest "version" (0.3.0 → 0.3.1) and "homepage_url", which now points at the
+project's new GitHub organisation: https://github.com/ladospwm/lados (the repository was moved
+from a personal account into the org; the old URL redirects). Nothing else in the package
+changed — background.js, content.js, popup.html, popup.js and icons/ are identical to the
+published 0.3.0.
+
+Unchanged, for reference:
+- add-on id: lados@adrijuse395.github.io (so this updates the same add-on)
+- permissions: only http://127.0.0.1:18765/* — the local loopback bridge to the Lados desktop app
+- content script on http(s)://*/* only to detect login forms on the page the user is on
+- no remote code; nothing is contacted except the user's own machine
+- data collection: none
+
+Source: https://github.com/ladospwm/lados/tree/main/browser-extension
+Privacy policy: https://ladospwm.vercel.app/privacy
+(source of truth: https://github.com/ladospwm/lados/blob/main/docs/PRIVACY.md)
+```
+
+(Chrome/Edge take the same wording: Chrome’s “What’s new in this version” gets the release note,
+and its privacy questionnaire is already covered above.)
 
 ---
 
