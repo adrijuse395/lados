@@ -497,11 +497,21 @@ fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
 }
 
 /// Whether `composite` is the account's master password. Verified by attempting an OPAQUE
-/// login, so nothing secret has to be remembered between sessions.
+/// login, falling back to the legacy login for accounts not yet upgraded. Nothing secret has
+/// to be remembered between sessions.
 #[cfg(feature = "sync")]
 fn is_the_account_password(base: &str, email: &str, composite: &SecretKey) -> bool {
-    match crate::sync::auth_secret(composite, email) {
-        Ok(auth) => opaque_login(base, email, auth.as_bytes()).is_ok(),
+    let Ok(auth) = crate::sync::auth_secret(composite, email) else {
+        return false;
+    };
+    if opaque_login(base, email, auth.as_bytes()).is_ok() {
+        return true;
+    }
+    match crate::sync::previous_auth_secret(composite) {
+        Ok(previous) => {
+            let legacy = crate::sync::legacy_auth_secret(composite);
+            crate::sync::login(base, email, &auth, &previous, &legacy).is_ok()
+        }
         Err(_) => false,
     }
 }
