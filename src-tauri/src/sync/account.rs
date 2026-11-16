@@ -178,6 +178,9 @@ pub fn delete_account(base: &str, token: &str) -> Result<()> {
     match response.status {
         200 => Ok(()),
         401 => Err(Error::SessionExpired),
+        502 => Err(Error::invalid(
+            "We could not stop your subscription, so your account was not deleted. Please try again in a moment.",
+        )),
         _ => Err(Error::System(format!("could not delete the account ({})", response.status))),
     }
 }

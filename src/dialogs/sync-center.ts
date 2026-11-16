@@ -697,7 +697,7 @@ async function removeAccount(refresh: () => void): Promise<void> {
   const confirmed = await confirmDialog({
     title: "Delete your Lados Sync account?",
     message:
-      "This permanently deletes your account and the encrypted copies stored on the server. The vaults on this device are kept. This cannot be undone.",
+      "This permanently deletes your account and the encrypted copies stored on the server, and cancels any subscription so you are no longer charged. The vaults on this device are kept. This cannot be undone.",
     confirmLabel: "Delete account",
     danger: true,
   });

@@ -677,7 +677,33 @@ async function deleteVault(env: Env, account: AccountRow, id: string): Promise<R
 }
 
 /// Deletes the account, its vault rows, its session tokens and its stored blobs.
+/// Stops a live Paddle subscription before its account is erased. Returns an error response only
+/// when cancellation could not be confirmed for a reason that would leave the user being charged
+/// (bad credentials, rate limiting, a Paddle outage); an already-cancelled subscription is fine.
+async function cancelSubscriptionForDeletion(env: Env, account: AccountRow): Promise<Response | null> {
+  if (!account.billing_subscription_id || !env.PADDLE_API_KEY) return null;
+  let response: Response;
+  try {
+    response = await fetch(`${paddleBase(env)}/subscriptions/${account.billing_subscription_id}/cancel`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.PADDLE_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({ effective_from: "immediately" }),
+    });
+  } catch {
+    return json({ error: "cancel_failed", paddleStatus: 0 }, 502);
+  }
+  if (response.ok) return null;
+  const blocking =
+    response.status === 401 || response.status === 403 || response.status === 429 || response.status >= 500;
+  if (!blocking) return null; // already cancelled / not cancellable — safe to erase
+  const body = (await response.json().catch(() => ({}))) as { error?: { code?: string } };
+  return json({ error: "cancel_failed", paddleStatus: response.status, paddleCode: body.error?.code ?? null }, 502);
+}
+
 async function deleteAccount(env: Env, account: AccountRow): Promise<Response> {
+  // Stop billing first: never leave a live subscription attached to an account we are erasing.
+  const failure = await cancelSubscriptionForDeletion(env, account);
+  if (failure) return failure;
   const { results } = await env.DB.prepare("SELECT id FROM vaults WHERE account_id = ?")
     .bind(account.id)
     .all<{ id: string }>();

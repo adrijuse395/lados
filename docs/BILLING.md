@@ -203,6 +203,10 @@ No names, addresses, or payment methods — those live with the MoR.
   sync; the MoR retries the charge during that window.
 - A chargeback marks the subscription expired immediately.
 - Cancellation never deletes data; the account simply becomes read-only after the paid period.
+- **Deleting the account cancels its subscription first** (`effective_from: immediately`), so a
+  deleted account can never keep being charged. If Paddle cannot confirm the cancellation
+  (bad credentials, rate limit, outage) the deletion is refused with `502 cancel_failed` rather
+  than leaving a live subscription behind; an already-cancelled subscription does not block it.
 
 ## 9. Legal pages & entity
 
