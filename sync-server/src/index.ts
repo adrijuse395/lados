@@ -58,13 +58,6 @@ async function sha256Hex(value: string): Promise<string> {
   return toHex(await crypto.subtle.digest("SHA-256", enc.encode(value)));
 }
 
-/// The stored credential is a one-way function of the client's high-entropy auth
-/// secret (the expensive Argon2 work already happened on the client). A salt makes
-/// identical secrets produce different verifiers.
-async function verifierFor(salt: string, authSecret: string): Promise<string> {
-  return sha256Hex(`${salt}:${authSecret}`);
-}
-
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -148,52 +141,6 @@ async function allow(env: Env, bucket: string, limit: number, windowSeconds: num
   return true;
 }
 
-/// Legacy login, kept only so accounts created before OPAQUE can authenticate once and then be
-/// upgraded to an OPAQUE record (`opaqueUpgradeStart`). New accounts are always OPAQUE.
-async function login(env: Env, request: Request): Promise<Response> {
-  const body = await readJson<{
-    email?: string;
-    authSecret?: string;
-    previousAuthSecret?: string;
-    legacyAuthSecret?: string;
-  }>(request);
-  const email = body?.email?.trim().toLowerCase();
-  const authSecret = body?.authSecret;
-  if (!email || !authSecret) return json({ error: "invalid_request" }, 400);
-
-  if (!(await allow(env, `login:ip:${clientIp(request)}`, 100, 900))) return json({ error: "rate_limited" }, 429);
-  if (!(await allow(env, `login:email:${email}`, 20, 900))) return json({ error: "rate_limited" }, 429);
-
-  const row = await env.DB.prepare(
-    "SELECT id, salt, verifier, scheme, plan FROM accounts WHERE email = ?",
-  )
-    .bind(email)
-    .first<{ id: string; salt: string; verifier: string; scheme: string; plan: string }>();
-  if (!row) return json({ error: "invalid_credentials" }, 401);
-
-  // Each scheme has its own secret; the client sends the matching one so older accounts can
-  // authenticate once and be upgraded to the per-account salt.
-  let presented: string | undefined;
-  if (row.scheme === "argon2v2") presented = authSecret;
-  else if (row.scheme === "argon2") presented = body?.previousAuthSecret ?? authSecret;
-  else presented = body?.legacyAuthSecret;
-  if (!presented) return json({ error: "invalid_credentials" }, 401);
-
-  const candidate = await verifierFor(row.salt, presented);
-  if (!timingSafeEqual(candidate, row.verifier)) return json({ error: "invalid_credentials" }, 401);
-
-  if (row.scheme !== "argon2v2") {
-    const salt = randomHex(16);
-    const verifier = await verifierFor(salt, authSecret);
-    await env.DB.prepare("UPDATE accounts SET salt = ?, verifier = ?, scheme = 'argon2v2' WHERE id = ?")
-      .bind(salt, verifier, row.id)
-      .run();
-  }
-
-  const token = await startSession(env, row.id);
-  return json({ token, plan: row.plan });
-}
-
 // ----- OPAQUE auth (the server never sees a password-equivalent) -----
 
 /// How long an in-flight login may take before its state is discarded.
@@ -211,8 +158,13 @@ async function opaqueRegisterStart(env: Env, request: Request): Promise<Response
   const existing = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?").bind(email).first();
   if (existing) return json({ error: "email_taken" }, 409);
 
-  const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, email, body.registrationRequest);
-  return json({ registrationResponse });
+  try {
+    const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, email, body.registrationRequest);
+    return json({ registrationResponse });
+  } catch {
+    // A malformed handshake is bad input, not a server fault.
+    return json({ error: "invalid_request" }, 400);
+  }
 }
 
 /// Registration, step 2: store the registration record and start a session.
@@ -250,9 +202,14 @@ async function opaqueLoginStart(env: Env, request: Request): Promise<Response> {
 
   // No record -> a dummy response, so we do not reveal whether the email is registered.
   const seed = crypto.getRandomValues(new Uint8Array(32));
-  const result = JSON.parse(
-    start_login(env.OPAQUE_SERVER_SETUP, account?.opaque_record ?? null, body.startLoginRequest, email, seed),
-  ) as { serverLoginState: string; loginResponse: string };
+  let result: { serverLoginState: string; loginResponse: string };
+  try {
+    result = JSON.parse(
+      start_login(env.OPAQUE_SERVER_SETUP, account?.opaque_record ?? null, body.startLoginRequest, email, seed),
+    ) as { serverLoginState: string; loginResponse: string };
+  } catch {
+    return json({ error: "invalid_request" }, 400);
+  }
 
   const loginId = randomHex(16);
   await env.DB.prepare("INSERT INTO logins (id, account_id, server_state, expires_at) VALUES (?, ?, ?, ?)")
@@ -293,8 +250,12 @@ async function opaqueLoginFinish(env: Env, request: Request): Promise<Response> 
 async function opaqueUpgradeStart(env: Env, account: AccountRow, request: Request): Promise<Response> {
   const body = await readJson<{ registrationRequest?: string }>(request);
   if (!body?.registrationRequest) return json({ error: "invalid_request" }, 400);
-  const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, account.email, body.registrationRequest);
-  return json({ registrationResponse });
+  try {
+    const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, account.email, body.registrationRequest);
+    return json({ registrationResponse });
+  } catch {
+    return json({ error: "invalid_request" }, 400);
+  }
 }
 
 async function opaqueUpgradeFinish(env: Env, account: AccountRow, request: Request): Promise<Response> {
@@ -798,8 +759,7 @@ export default {
     const method = request.method.toUpperCase();
 
     try {
-      // New accounts are OPAQUE-only: the legacy fast-verifier register endpoint is gone.
-      if (path === "/auth/login" && method === "POST") return await login(env, request);
+      // Auth is OPAQUE-only: the legacy fast-verifier register and login endpoints are gone.
       if (path === "/auth/register/start" && method === "POST") return await opaqueRegisterStart(env, request);
       if (path === "/auth/register/finish" && method === "POST") return await opaqueRegisterFinish(env, request);
       if (path === "/auth/login/start" && method === "POST") return await opaqueLoginStart(env, request);

@@ -21,24 +21,6 @@ pub fn auth_secret(composite: &SecretKey, account: &str) -> Result<String> {
     crypto::sync_auth_secret(composite, account)
 }
 
-/// The previous auth secret (one global salt). Sent on login only, so accounts created
-/// before the per-account salt can authenticate once and be upgraded.
-pub fn previous_auth_secret(composite: &SecretKey) -> Result<String> {
-    crypto::previous_auth_secret(composite)
-}
-
-/// The pre-hardening derivation (a single fast hash of the composite key). Kept only so
-/// accounts created before the Argon2 verifier can sign in once and be upgraded.
-pub fn legacy_auth_secret(composite: &SecretKey) -> String {
-    let mut buffer = Vec::with_capacity(19 + 32);
-    buffer.extend_from_slice(b"lados-sync-auth-v1");
-    buffer.extend_from_slice(&**composite);
-    crypto::sha256(&buffer)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
-}
-
 fn token_from(response: Response) -> Result<String> {
     response
         .value
@@ -47,25 +29,6 @@ fn token_from(response: Response) -> Result<String> {
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .ok_or_else(|| Error::System(format!("unexpected auth response ({})", response.status)))
-}
-
-/// Logs in with the derived auth secret. `previous_secret` and `legacy_secret` are the
-/// older derivations, sent only so a pre-existing account can authenticate once and be
-/// upgraded. Fails with invalid credentials if wrong.
-pub fn login(base: &str, email: &str, auth_secret: &str, previous_secret: &str, legacy_secret: &str) -> Result<String> {
-    let url = format!("{}/auth/login", base.trim_end_matches('/'));
-    let body = json!({
-        "email": email,
-        "authSecret": auth_secret,
-        "previousAuthSecret": previous_secret,
-        "legacyAuthSecret": legacy_secret,
-    });
-    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
-    match response.status {
-        200 => token_from(response),
-        401 => Err(Error::InvalidCredentials),
-        _ => Err(Error::System(format!("login failed ({})", response.status))),
-    }
 }
 
 /// Returns the server vault for this vault identity, creating it if the account has none.

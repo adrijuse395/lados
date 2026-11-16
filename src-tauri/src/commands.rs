@@ -511,24 +511,14 @@ fn remember_account(state: &AppState, base: &str, token: &str) {
     }
 }
 
-/// Whether `composite` is the account's master password. Verified by attempting an OPAQUE
-/// login, falling back to the legacy login for accounts not yet upgraded. Nothing secret has
-/// to be remembered between sessions.
+/// Whether `composite` is the account's master password, verified with an OPAQUE login. Nothing
+/// secret has to be remembered between sessions.
 #[cfg(feature = "sync")]
 fn is_the_account_password(base: &str, email: &str, composite: &SecretKey) -> bool {
     let Ok(auth) = crate::sync::auth_secret(composite, email) else {
         return false;
     };
-    if opaque_login(base, email, auth.as_bytes()).is_ok() {
-        return true;
-    }
-    match crate::sync::previous_auth_secret(composite) {
-        Ok(previous) => {
-            let legacy = crate::sync::legacy_auth_secret(composite);
-            crate::sync::login(base, email, &auth, &previous, &legacy).is_ok()
-        }
-        Err(_) => false,
-    }
+    opaque_login(base, email, auth.as_bytes()).is_ok()
 }
 
 /// The error shown when a vault cannot be synced because its master password is not the account's.
@@ -560,20 +550,10 @@ pub async fn sync_sign_in(
             require_password(&password)?;
             let composite = composite_key(&password, key_file.as_deref())?;
             let auth = crate::sync::auth_secret(&composite, &email)?;
-            let previous = crate::sync::previous_auth_secret(&composite)?;
-            let legacy = crate::sync::legacy_auth_secret(&composite);
             let label = crypto::secret_to_base64(&crypto::label_key(&composite, &email)?);
             let base = crate::sync::DEFAULT_SERVER.to_string();
-            // Prefer OPAQUE. If the account predates it, authenticate the old way and then
-            // attach an OPAQUE record, so the next sign-in is OPAQUE too.
-            let token = match opaque_login(&base, &email, auth.as_bytes()) {
-                Ok(token) => token,
-                Err(_) => {
-                    let token = crate::sync::login(&base, &email, &auth, &previous, &legacy)?;
-                    let _ = upgrade_to_opaque(&base, &token, auth.as_bytes());
-                    token
-                }
-            };
+            // OPAQUE sign-in: the server never sees a password-equivalent.
+            let token = opaque_login(&base, &email, auth.as_bytes())?;
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {

@@ -158,14 +158,6 @@ pub fn sync_auth_secret(composite: &SecretKey, account: &str) -> Result<String> 
     Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
-/// The previous derivation, which used one global salt. Kept only so accounts created
-/// before the per-account salt can sign in once and be upgraded.
-pub fn previous_auth_secret(composite: &SecretKey) -> Result<String> {
-    let salt: [u8; SALT_LEN] = sha256(b"lados-sync-auth-salt-v1");
-    let secret = derive_key(composite, &salt, SYNC_AUTH_KDF)?;
-    Ok(secret.iter().map(|byte| format!("{byte:02x}")).collect())
-}
-
 /// Key that encrypts the vault labels shared with the server, so it only ever sees ciphertext.
 /// Salted per account, and stretched with Argon2id so guessing it costs a full run.
 pub fn label_key(composite: &SecretKey, account: &str) -> Result<SecretKey> {
