@@ -1,0 +1,12 @@
+# Local development loop shortcuts.
+#
+# `cargo fast`      builds the app for testing in seconds (release-fast profile: no LTO,
+#                   parallel codegen, incremental; and `--bin` skips the mobile staticlib/cdylib).
+# `cargo fast-test` runs the tests in the same fast profile.
+#
+# The shipping artifact still uses the fully optimized `release` profile (lto = true, one codegen
+# unit); it is slow on purpose and only needed for a real release.
+
+[alias]
+fast = "build --profile release-fast --features sync --bin lados"
+fast-test = "test --profile release-fast --features sync"

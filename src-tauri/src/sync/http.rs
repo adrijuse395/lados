@@ -118,3 +118,29 @@ impl Remote for HttpRemote {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// End-to-end TLS check: it uses the same rustls provider the app installs at startup
+    /// (ring, not aws-lc), against the real server. Ignored by default; run with
+    /// `cargo test --profile release-fast --features sync https_round_trip -- --ignored`.
+    #[test]
+    #[ignore = "needs the network"]
+    fn https_round_trip_uses_the_configured_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        for _ in 0..3 {
+            let response = send(
+                Method::GET,
+                "https://lados-sync.ladospwm.workers.dev/health",
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("the real client path must reach the server");
+            assert_eq!(response.status, 200);
+        }
+    }
+}

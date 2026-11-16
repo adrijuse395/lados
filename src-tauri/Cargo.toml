@@ -23,7 +23,7 @@ tauri-build = { version = "2.7", features = [] }
 custom-protocol = ["tauri/custom-protocol"]
 # Optional cloud synchronization (see docs/SYNC.md). Off by default so normal builds
 # are unchanged while the feature is developed.
-sync = ["dep:reqwest", "dep:opaque-ke", "dep:sha2_010", "dep:rand_08"]
+sync = ["dep:reqwest", "dep:rustls", "dep:opaque-ke", "dep:sha2_010", "dep:rand_08"]
 
 [dependencies]
 # Shared shell (tray-icon is desktop-only; see target-specific deps below)
@@ -53,7 +53,12 @@ keepass = { version = "0.15", features = ["save_kdbx4"] }
 base64 = "0.23"
 
 # Optional sync client (only compiled with the `sync` feature).
-reqwest = { version = "0.13", optional = true, default-features = false, features = ["blocking", "json", "rustls"] }
+# `rustls-no-provider` avoids reqwest's default `rustls` feature, which would drag in the heavy
+# aws-lc-rs / aws-lc-sys C build (CMake + NASM, many minutes). We install the `ring` provider
+# at startup instead — see the `rustls` dependency and `lib.rs`.
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
+# Used only to select and install the crypto provider rustls should use (ring, not aws-lc).
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"], optional = true }
 # OPAQUE (RFC 9807) login. Interoperates with the server's `@serenity-kit/opaque`,
 # which is this same crate compiled to WebAssembly.
 opaque-ke = { version = "4", optional = true, features = ["ristretto255"] }
@@ -89,6 +94,16 @@ codegen-units = 1
 lto = true
 # "symbols" would strip JNI exports and break the Android .so at startup.
 strip = "debuginfo"
+
+# Fast rebuilds for local testing: no LTO, parallel code generation and incremental
+# compilation. The `release` profile above stays fully optimized for shipping.
+# Build with: cargo build --profile release-fast --features sync --bin lados
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+opt-level = 2
+incremental = true
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri = { version = "2.12", features = ["tray-icon"] }

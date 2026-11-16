@@ -48,6 +48,12 @@ fn vault_from_arguments() -> Option<PathBuf> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // rustls needs a process-wide crypto provider. We install `ring` (enabled on our `rustls`
+    // dependency); this keeps reqwest off its default `rustls` feature, which would pull the very
+    // slow aws-lc-sys C build.
+    #[cfg(feature = "sync")]
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let builder = tauri::Builder::default();
 
     // Single-instance runs first: a second launch (for example from the browser
