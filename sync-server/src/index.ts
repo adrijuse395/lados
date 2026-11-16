@@ -343,6 +343,10 @@ function hasActivePlan(account: AccountRow): boolean {
 
 const TRIAL_MS = 14 * 24 * 60 * 60 * 1000;
 
+/// How long a failed renewal keeps access while Paddle retries the charge (dunning). Without
+/// this, one declined card would freeze sync the instant the paid period ends.
+const PAST_DUE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
 /// Whether the server can sell: an API key and a price. Missing the webhook secret does not turn
 /// this off (it only disables the webhook that flips the plan).
 function billingEnabled(env: Env): boolean {
@@ -388,7 +392,9 @@ function planFromSubscription(subscription: {
     case "trialing":
       return { plan: "trialing", validUntil };
     case "past_due":
-      return { plan: "past_due", validUntil };
+      // Paddle is retrying the charge; keep syncing for a while so a declined card does not
+      // freeze the account at once. The grace runs from the end of the paid period.
+      return { plan: "past_due", validUntil: (validUntil ?? Date.now()) + PAST_DUE_GRACE_MS };
     case "canceled":
       return { plan: "canceled", validUntil };
     default:

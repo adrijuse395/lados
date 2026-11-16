@@ -258,7 +258,8 @@ of this is a *gestor* question — get one before the first payout.
 
 ## 11. Testing
 
-- MoR **sandbox** + test cards; a `BILLING_SANDBOX=1` env var and a separate webhook secret.
+- MoR **sandbox** + test cards. Sandbox vs live is inferred from the API key (`_sdbx_`); there is
+  no separate switch. Each environment has its own key, price and webhook secret.
 - Automated: replay a recorded event into the webhook behind a flag and assert the resulting
   `plan`/`plan_valid_until` in D1.
 - Manual: run a real sandbox subscription through checkout → webhook → `/me` → sync, and a
