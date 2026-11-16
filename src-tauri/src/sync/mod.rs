@@ -13,10 +13,11 @@ mod opaque;
 mod remote;
 
 pub use account::{
-    AccountInfo, CloudVault, DEFAULT_SERVER, auth_secret, billing_cancel, billing_checkout, delete_account,
-    delete_vault, ensure_vault, legacy_auth_secret, list_vaults, login, me, opaque_login_finish,
-    opaque_login_start, opaque_register_finish, opaque_register_start, opaque_upgrade_finish,
-    opaque_upgrade_start, previous_auth_secret, register, set_vault_label, sign_out_everywhere,
+    AccountInfo, CloudVault, DEFAULT_SERVER, auth_secret, billing_cancel, billing_checkout, billing_resume,
+    delete_account, delete_vault, ensure_vault, legacy_auth_secret, list_vaults, login, me,
+    opaque_login_finish, opaque_login_start, opaque_register_finish, opaque_register_start,
+    opaque_upgrade_finish, opaque_upgrade_start, previous_auth_secret, set_vault_label,
+    sign_out_everywhere,
 };
 pub use engine::{SyncOutcome, rekey, sync};
 pub use http::HttpRemote;

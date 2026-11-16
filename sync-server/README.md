@@ -14,8 +14,12 @@ all merging happens on the user's device.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/auth/register` | `{ email, authSecret }` → `{ token, plan }` |
-| POST | `/auth/login` | `{ email, authSecret, legacyAuthSecret? }` → `{ token, plan }` |
+| POST | `/auth/register/start` | `{ email, registrationRequest }` → `{ registrationResponse }` |
+| POST | `/auth/register/finish` | `{ email, registrationRecord }` → `{ token, plan }` |
+| POST | `/auth/login/start` | `{ email, startLoginRequest }` → `{ loginId, loginResponse }` |
+| POST | `/auth/login/finish` | `{ loginId, finishLoginRequest }` → `{ token, plan }` |
+| POST | `/auth/upgrade/start` / `finish` | attach an OPAQUE record to a pre-OPAQUE account |
+| POST | `/auth/login` | legacy fast-verifier login, kept only to upgrade old accounts |
 | GET | `/me` | account + plan |
 | GET | `/vaults` | list vaults |
 | POST | `/vaults` | `{ vaultUuid, nameCipher }` → create a vault (name stored encrypted) |
@@ -23,16 +27,49 @@ all merging happens on the user's device.
 | PUT | `/vaults/:id` | raw encrypted bytes + `If-Match: <version>` → `{ version }` (409 on conflict) |
 | DELETE | `/vaults/:id` | remove a vault (and its blobs) |
 | DELETE | `/sessions` | revoke every other session ("sign out everywhere") |
-| DELETE | `/account` | delete the account and all its data |
+| DELETE | `/account` | delete the account, its data and its subscription |
+| POST | `/billing/checkout` · `/cancel` · `/resume` | Paddle checkout, cancel at period end, undo it |
 
 Auth is a bearer token (opaque, stored hashed, 30-day TTL).
 
-`authSecret` is `Argon2id(compositeKey, salt = f(email))` — **per-account salted** — computed on
-the device, so a leaked credential table stays expensive to brute-force and cannot be attacked
-with a single Argon2 run per guess across all accounts. Older accounts are upgraded in place on
-their next successful login (the client also sends the previous derivations).
+Accounts are **OPAQUE** (aPAKE): the client proves knowledge of the master password without ever
+sending it, and the server stores only an OPAQUE registration record. The old fast-verifier
+`/auth/register` endpoint is **removed**; `/auth/login` and `/auth/upgrade/*` remain only so
+accounts created before OPAQUE can sign in once and be upgraded.
 
 Requests are throttled per IP, per email and per account; exceeding a limit returns `429`.
+
+### Secrets
+
+| Name | What |
+| --- | --- |
+| `OPAQUE_SERVER_SETUP` | OPAQUE server setup (OPRF seed + key pair). **Critical.** |
+| `PADDLE_API_KEY` | Paddle API key (server-side checkout/cancel/resume). |
+| `PADDLE_WEBHOOK_SECRET` | Webhook destination secret; verifies entitlement events. |
+| `ADMIN_TOKEN` | *Optional.* Enables the `/admin/comp` routes (see below). |
+
+Set them with `wrangler secret put <name>`, or in the dashboard with type **Secret** — never as
+plaintext variables, because a `wrangler deploy` replaces the script's variables with
+`wrangler.toml` and drops dashboard-only ones. `PADDLE_PRICE_ID` and `TOKEN_TTL_SECONDS` are plain
+`[vars]`.
+
+### Billing and complimentary access
+
+`plan` is written **only** by the signed Paddle webhook (`comp | trialing | active | past_due |
+canceled | expired`): the client can start a checkout but never grant itself access. See
+`docs/BILLING.md` in the app repo.
+
+To give someone free, permanent access (family, friends, reviewers):
+
+```bash
+ADMIN_TOKEN=… node scripts/comp.mjs grant  friend@example.com "family"
+ADMIN_TOKEN=… node scripts/comp.mjs revoke friend@example.com
+ADMIN_TOKEN=… node scripts/comp.mjs list
+```
+
+A granted email is created as `comp` when it registers; granting an existing account upgrades it
+at once. The `/admin/comp` routes return `404` until `ADMIN_TOKEN` is set. Revoking turns an
+existing `comp` account read-only. No password is ever involved.
 
 ### Upgrading an existing database
 
@@ -47,7 +84,11 @@ npx wrangler d1 execute lados-sync --remote \
   --command "CREATE INDEX IF NOT EXISTS idx_vaults_uuid ON vaults(account_id, vault_uuid)"
 npx wrangler d1 execute lados-sync --remote \
   --command "CREATE TABLE IF NOT EXISTS rate_limits (bucket TEXT PRIMARY KEY, count INTEGER NOT NULL, reset_at INTEGER NOT NULL)"
+npx wrangler d1 execute lados-sync --remote \
+  --command "CREATE TABLE IF NOT EXISTS comp_grants (email TEXT PRIMARY KEY, note TEXT, created_at INTEGER NOT NULL)"
 ```
+
+(Every statement is `IF NOT EXISTS`, so re-running `schema.sql` is also safe.)
 
 ## One-time setup (free tier — no card required)
 

@@ -24,4 +24,6 @@ TOKEN_TTL_SECONDS = "2592000"   # 30 days
 # Paddle billing. The price id is not secret; the two credentials are Worker secrets:
 #   wrangler secret put PADDLE_API_KEY
 #   wrangler secret put PADDLE_WEBHOOK_SECRET
+# Optional admin token; enables /admin/comp (free accounts for family, friends…):
+#   wrangler secret put ADMIN_TOKEN
 PADDLE_PRICE_ID = "pri_01m7jfrjx7shwpnwpgccvkqhzn"   # sandbox "Lados Sync" 12 EUR/year

@@ -19,6 +19,8 @@ export interface Env {
   PADDLE_API_KEY?: string;
   PADDLE_WEBHOOK_SECRET?: string;
   PADDLE_PRICE_ID?: string;
+  /** Optional admin token; enables the /admin/comp routes (free access for family, friends…). */
+  ADMIN_TOKEN?: string;
 }
 
 // The OPAQUE WASM is imported as a module (compiled at deploy time) and instantiated once.
@@ -146,37 +148,8 @@ async function allow(env: Env, bucket: string, limit: number, windowSeconds: num
   return true;
 }
 
-async function register(env: Env, request: Request): Promise<Response> {
-  const body = await readJson<{ email?: string; authSecret?: string }>(request);
-  const email = body?.email?.trim().toLowerCase();
-  const authSecret = body?.authSecret;
-  if (!email || !email.includes("@") || !authSecret) {
-    return json({ error: "invalid_request" }, 400);
-  }
-
-  if (!(await allow(env, `register:ip:${clientIp(request)}`, 30, 900))) {
-    return json({ error: "rate_limited" }, 429);
-  }
-
-  const existing = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?")
-    .bind(email)
-    .first();
-  if (existing) return json({ error: "email_taken" }, 409);
-
-  const salt = randomHex(16);
-  const verifier = await verifierFor(salt, authSecret);
-  const id = crypto.randomUUID();
-  const start = initialPlan(env);
-  await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, plan_valid_until, created_at) VALUES (?, ?, ?, ?, 'argon2v2', ?, ?, ?)",
-  )
-    .bind(id, email, salt, verifier, start.plan, start.validUntil, Date.now())
-    .run();
-
-  const token = await startSession(env, id);
-  return json({ token, plan: start.plan });
-}
-
+/// Legacy login, kept only so accounts created before OPAQUE can authenticate once and then be
+/// upgraded to an OPAQUE record (`opaqueUpgradeStart`). New accounts are always OPAQUE.
 async function login(env: Env, request: Request): Promise<Response> {
   const body = await readJson<{
     email?: string;
@@ -253,7 +226,7 @@ async function opaqueRegisterFinish(env: Env, request: Request): Promise<Respons
   if (existing) return json({ error: "email_taken" }, 409);
 
   const id = crypto.randomUUID();
-  const start = initialPlan(env);
+  const start = await initialPlan(env, email);
   await env.DB.prepare(
     "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, plan_valid_until, created_at) VALUES (?, ?, '', '', 'opaque', ?, ?, ?, ?)",
   )
@@ -380,19 +353,34 @@ function paddleBase(env: Env): string {
   return (env.PADDLE_API_KEY ?? "").includes("_sdbx_") ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
 }
 
-/// The plan a brand-new account starts on: a 14-day trial once billing is set up (an API key and
-/// a price exist), otherwise simply active (so a server without Paddle just works).
-function initialPlan(env: Env): { plan: string; validUntil: number | null } {
+/// Whether this email was granted complimentary access, whether or not it has registered yet.
+async function isCompGranted(env: Env, email: string): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT 1 AS granted FROM comp_grants WHERE email = ?").bind(email).first();
+  return Boolean(row);
+}
+
+/// The plan a brand-new account starts on: complimentary when its email was granted free access,
+/// otherwise a 14-day trial once billing is set up (an API key and a price exist), otherwise
+/// simply active (so a server without Paddle just works).
+async function initialPlan(env: Env, email: string): Promise<{ plan: string; validUntil: number | null }> {
+  if (await isCompGranted(env, email)) return { plan: "comp", validUntil: null };
   return billingEnabled(env) ? { plan: "trialing", validUntil: Date.now() + TRIAL_MS } : { plan: "active", validUntil: null };
 }
 
-/// Maps a Paddle subscription status and period to our entitlement.
+/// Maps a Paddle subscription status and period to our entitlement. A live subscription that is
+/// scheduled to cancel keeps working until that date, so it reads as `canceled` with that end.
 function planFromSubscription(subscription: {
   status?: string;
   current_billing_period?: { ends_at?: string };
+  scheduled_change?: { action?: string; effective_at?: string } | null;
 }): { plan: string; validUntil: number | null } {
   const ends = subscription.current_billing_period?.ends_at ? Date.parse(subscription.current_billing_period.ends_at) : NaN;
   const validUntil = Number.isFinite(ends) ? ends : null;
+  const scheduled = subscription.scheduled_change;
+  if (subscription.status === "active" && scheduled?.action === "cancel") {
+    const at = scheduled.effective_at ? Date.parse(scheduled.effective_at) : NaN;
+    return { plan: "canceled", validUntil: Number.isFinite(at) ? at : validUntil };
+  }
   switch (subscription.status) {
     case "active":
       return { plan: "active", validUntil };
@@ -449,6 +437,12 @@ async function applyBilling(
 /// Creates a Paddle checkout bound to this account and returns its hosted URL.
 async function createCheckout(env: Env, account: AccountRow): Promise<Response> {
   if (!billingEnabled(env)) return json({ error: "billing_unavailable" }, 503);
+  // Never open a second subscription: an account that already has one (or complimentary access)
+  // must not be able to create another and be charged twice.
+  if (account.plan === "comp") return json({ error: "not_billable" }, 409);
+  if (account.billing_subscription_id && hasActivePlan(account)) {
+    return json({ error: "already_subscribed" }, 409);
+  }
   const response = await fetch(`${paddleBase(env)}/transactions`, {
     method: "POST",
     headers: {
@@ -487,7 +481,27 @@ async function cancelSubscription(env: Env, account: AccountRow): Promise<Respon
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: { code?: string } };
-    return json({ error: "cancel_failed", paddleStatus: response.status, paddleCode: body.error?.code ?? null }, 502);
+    const code = body.error?.code ?? null;
+    // Paddle rejects a second change while one is pending; the client should just refresh.
+    if (code === "subscription_locked_pending_changes") return json({ error: "cancel_pending" }, 409);
+    return json({ error: "cancel_failed", paddleStatus: response.status, paddleCode: code }, 502);
+  }
+  return json({ ok: true });
+}
+
+/// Undoes a scheduled cancellation, so the subscription keeps renewing instead of ending.
+async function resumeSubscription(env: Env, account: AccountRow): Promise<Response> {
+  if (!env.PADDLE_API_KEY) return json({ error: "billing_unavailable" }, 503);
+  const subscriptionId = account.billing_subscription_id;
+  if (!subscriptionId) return json({ error: "no_subscription" }, 400);
+  const response = await fetch(`${paddleBase(env)}/subscriptions/${subscriptionId}`, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${env.PADDLE_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ scheduled_change: null }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: { code?: string } };
+    return json({ error: "resume_failed", paddleStatus: response.status, paddleCode: body.error?.code ?? null }, 502);
   }
   return json({ ok: true });
 }
@@ -511,6 +525,7 @@ async function paddleWebhook(env: Env, request: Request): Promise<Response> {
       subscription_id?: string;
       action?: string;
       current_billing_period?: { ends_at?: string };
+      scheduled_change?: { action?: string; effective_at?: string } | null;
       custom_data?: { accountId?: string };
     };
   };
@@ -719,6 +734,56 @@ async function deleteAccount(env: Env, account: AccountRow): Promise<Response> {
   return json({ ok: true });
 }
 
+// ----- Admin: complimentary access -----
+
+/// Whether the request carries the admin token. Admin routes stay disabled (404) until the
+/// ADMIN_TOKEN secret exists, so a default deployment simply does not expose them.
+function adminAuthorized(env: Env, request: Request): boolean {
+  if (!env.ADMIN_TOKEN) return false;
+  const given = bearerToken(request) ?? "";
+  return given.length > 0 && timingSafeEqual(given, env.ADMIN_TOKEN);
+}
+
+/// Lists the emails granted free access.
+async function adminListComp(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    "SELECT email, note, created_at FROM comp_grants ORDER BY created_at DESC",
+  ).all();
+  return json({ grants: results ?? [] });
+}
+
+/// Grants free access. An existing account is upgraded immediately; otherwise the grant is stored
+/// and picked up when the person registers.
+async function adminGrantComp(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ email?: string; note?: string }>(request);
+  const email = body?.email?.trim().toLowerCase();
+  if (!email || !email.includes("@")) return json({ error: "invalid_request" }, 400);
+  await env.DB.prepare(
+    "INSERT INTO comp_grants (email, note, created_at) VALUES (?, ?, ?) ON CONFLICT(email) DO UPDATE SET note = excluded.note",
+  )
+    .bind(email, body?.note ?? null, Date.now())
+    .run();
+  const result = await env.DB.prepare("UPDATE accounts SET plan = 'comp', plan_valid_until = NULL WHERE email = ?")
+    .bind(email)
+    .run();
+  return json({ ok: true, accountFound: (result.meta.changes ?? 0) > 0 });
+}
+
+/// Revokes free access: the grant is removed and an existing comp account becomes read-only (it
+/// can subscribe if it wants access back).
+async function adminRevokeComp(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ email?: string }>(request);
+  const email = body?.email?.trim().toLowerCase();
+  if (!email || !email.includes("@")) return json({ error: "invalid_request" }, 400);
+  await env.DB.prepare("DELETE FROM comp_grants WHERE email = ?").bind(email).run();
+  const result = await env.DB.prepare(
+    "UPDATE accounts SET plan = 'expired', plan_valid_until = NULL WHERE email = ? AND plan = 'comp'",
+  )
+    .bind(email)
+    .run();
+  return json({ ok: true, accountUpdated: (result.meta.changes ?? 0) > 0 });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -726,7 +791,7 @@ export default {
     const method = request.method.toUpperCase();
 
     try {
-      if (path === "/auth/register" && method === "POST") return await register(env, request);
+      // New accounts are OPAQUE-only: the legacy fast-verifier register endpoint is gone.
       if (path === "/auth/login" && method === "POST") return await login(env, request);
       if (path === "/auth/register/start" && method === "POST") return await opaqueRegisterStart(env, request);
       if (path === "/auth/register/finish" && method === "POST") return await opaqueRegisterFinish(env, request);
@@ -734,6 +799,15 @@ export default {
       if (path === "/auth/login/finish" && method === "POST") return await opaqueLoginFinish(env, request);
       if (path === "/health") return json({ ok: true });
       if (path === "/billing/webhook" && method === "POST") return await paddleWebhook(env, request);
+
+      // Admin: complimentary access. Disabled (404) until the ADMIN_TOKEN secret is set.
+      if (path === "/admin/comp") {
+        if (!adminAuthorized(env, request)) return json({ error: "not_found" }, 404);
+        if (method === "GET") return await adminListComp(env);
+        if (method === "POST") return await adminGrantComp(env, request);
+        if (method === "DELETE") return await adminRevokeComp(env, request);
+        return json({ error: "not_found" }, 404);
+      }
 
       const account = await authenticate(env, request);
       if (!account) return json({ error: "unauthorized" }, 401);
@@ -757,6 +831,7 @@ export default {
       // changed by the webhook. These stay available when the plan has lapsed, so a user can renew.
       if (path === "/billing/checkout" && method === "POST") return await createCheckout(env, account);
       if (path === "/billing/cancel" && method === "POST") return await cancelSubscription(env, account);
+      if (path === "/billing/resume" && method === "POST") return await resumeSubscription(env, account);
 
       // `/me` and every read stay available even when the plan lapsed, so the app can show the
       // status and the user can always download — and delete — their own cloud data.

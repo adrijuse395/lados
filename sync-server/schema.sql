@@ -27,6 +27,15 @@ CREATE TABLE IF NOT EXISTS billing_events (
   received_at INTEGER NOT NULL
 );
 
+-- Emails granted complimentary (free, unlimited) access, whether or not the account exists yet:
+-- on registration the plan becomes 'comp'; granting an existing account flips it immediately.
+-- Managed with scripts/comp.mjs (requires the ADMIN_TOKEN Worker secret).
+CREATE TABLE IF NOT EXISTS comp_grants (
+  email      TEXT PRIMARY KEY,
+  note       TEXT,
+  created_at INTEGER NOT NULL
+);
+
 -- In-flight OPAQUE logins (short-lived handshake state).
 CREATE TABLE IF NOT EXISTS logins (
   id           TEXT PRIMARY KEY,

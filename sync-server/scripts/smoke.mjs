@@ -2,8 +2,10 @@
 //
 //   BASE_URL=https://your-worker.workers.dev node scripts/smoke.mjs
 //
-// It creates throwaway accounts, exercises the whole API, and deletes everything
-// afterwards. Exits non-zero if any check fails.
+// It creates throwaway accounts through OPAQUE (exactly like the app), exercises the whole API,
+// and deletes everything afterwards. Exits non-zero if any check fails.
+
+import { ready, client } from "@serenity-kit/opaque";
 
 const BASE = (process.env.BASE_URL || "https://lados-sync.ladospwm.workers.dev").replace(/\/+$/, "");
 
@@ -44,15 +46,54 @@ async function call(method, path, { token, body, ifMatch, raw } = {}) {
 }
 
 const rid = () => Math.random().toString(36).slice(2, 10);
-const hex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+
+/// Registers a brand-new account through OPAQUE. Returns the response status and, on success,
+/// a session token.
+async function register(email, password) {
+  const registration = client.startRegistration({ password });
+  const started = await call("POST", "/auth/register/start", {
+    body: { email, registrationRequest: registration.registrationRequest },
+  });
+  if (started.status !== 200) return { status: started.status, token: undefined };
+  const finished = client.finishRegistration({
+    password,
+    registrationResponse: started.json.registrationResponse,
+    clientRegistrationState: registration.clientRegistrationState,
+  });
+  const done = await call("POST", "/auth/register/finish", {
+    body: { email, registrationRecord: finished.registrationRecord },
+  });
+  return { status: done.status, token: done.json?.token };
+}
+
+/// Logs in through OPAQUE. A wrong password is refused by the client, so it never reaches the
+/// server's finish step.
+async function login(email, password) {
+  const start = client.startLogin({ password });
+  const first = await call("POST", "/auth/login/start", {
+    body: { email, startLoginRequest: start.startLoginRequest },
+  });
+  if (first.status !== 200) return { status: first.status, token: undefined };
+  const finished = client.finishLogin({
+    password,
+    loginResponse: first.json.loginResponse,
+    clientLoginState: start.clientLoginState,
+  });
+  if (!finished) return { status: 401, token: undefined };
+  const done = await call("POST", "/auth/login/finish", {
+    body: { loginId: first.json.loginId, finishLoginRequest: finished.finishLoginRequest },
+  });
+  return { status: done.status, token: done.json?.token };
+}
 
 const emailA = `smoke-${rid()}@example.com`;
 const emailB = `smoke-${rid()}@example.com`;
-const secretA = hex(64);
-const secretB = hex(64);
+const passwordA = `smoke-pass-a-${rid()}`;
+const passwordB = `smoke-pass-b-${rid()}`;
 const uuidA = crypto.randomUUID();
 const uuidB = crypto.randomUUID();
 
+await ready;
 console.log(`Testing ${BASE}\n`);
 
 // ----- Health and authentication -----
@@ -62,21 +103,25 @@ check("health responds ok", r.status === 200 && r.json?.ok === true);
 r = await call("GET", "/vaults");
 check("unauthenticated request is rejected (401)", r.status === 401);
 
-r = await call("POST", "/auth/register", { body: { email: emailA, authSecret: secretA } });
-const tokenA = r.json?.token;
-check("register returns a token", r.status === 200 && typeof tokenA === "string");
+let auth = await register(emailA, passwordA);
+const tokenA = auth.token;
+check("register returns a token", auth.status === 200 && typeof tokenA === "string");
 
-r = await call("POST", "/auth/register", { body: { email: emailA, authSecret: secretA } });
-check("registering the same email twice is refused (409)", r.status === 409);
+auth = await register(emailA, passwordA);
+check("registering the same email twice is refused (409)", auth.status === 409);
 
-r = await call("POST", "/auth/login", { body: { email: emailA, authSecret: secretA } });
-check("login with the right secret succeeds", r.status === 200 && typeof r.json?.token === "string");
+auth = await login(emailA, passwordA);
+check("login with the right password succeeds", auth.status === 200 && typeof auth.token === "string");
 
-r = await call("POST", "/auth/login", { body: { email: emailA, authSecret: hex(64) } });
-check("login with a wrong secret is refused (401)", r.status === 401);
+auth = await login(emailA, `wrong-${rid()}`);
+check("login with a wrong password is refused (401)", auth.status === 401);
 
 r = await call("GET", "/me", { token: tokenA });
-check("me returns the active plan", r.status === 200 && r.json?.plan === "active");
+check(
+  "me returns a usable plan",
+  r.status === 200 && ["active", "trialing", "comp"].includes(r.json?.plan),
+  `plan ${r.json?.plan}`,
+);
 
 // ----- Cloud vaults keyed by the vault's own uuid -----
 r = await call("POST", "/vaults", { token: tokenA, body: { vaultUuid: uuidA, nameCipher: "cipher-alpha" } });
@@ -120,9 +165,9 @@ r = await call("PUT", `/vaults/${vaultA}`, { token: tokenA, ifMatch: 2, raw: new
 check("an oversized blob is refused (413)", r.status === 413, `status ${r.status}`);
 
 // ----- Accounts are isolated -----
-r = await call("POST", "/auth/register", { body: { email: emailB, authSecret: secretB } });
-const tokenB = r.json?.token;
-check("register a second account", r.status === 200 && typeof tokenB === "string");
+auth = await register(emailB, passwordB);
+const tokenB = auth.token;
+check("register a second account", auth.status === 200 && typeof tokenB === "string");
 
 r = await call("GET", `/vaults/${vaultA}`, { token: tokenB });
 check("another account cannot read a vault (404)", r.status === 404);
@@ -146,19 +191,19 @@ check("delete the account", r.status === 200);
 r = await call("GET", "/vaults", { token: tokenA });
 check("the token stops working after deletion (401)", r.status === 401);
 
-r = await call("POST", "/auth/login", { body: { email: emailA, authSecret: secretA } });
-check("the deleted account cannot log in (401)", r.status === 401);
+auth = await login(emailA, passwordA);
+check("the deleted account cannot log in (401)", auth.status === 401);
 
 r = await call("DELETE", "/account", { token: tokenB });
 check("clean up the second account", r.status === 200);
 
 // ----- Sign out everywhere -----
 const soEmail = `smoke-so-${rid()}@example.com`;
-const soSecret = hex(64);
-r = await call("POST", "/auth/register", { body: { email: soEmail, authSecret: soSecret } });
-const soToken1 = r.json?.token;
-r = await call("POST", "/auth/login", { body: { email: soEmail, authSecret: soSecret } });
-const soToken2 = r.json?.token;
+const soPassword = `smoke-pass-so-${rid()}`;
+auth = await register(soEmail, soPassword);
+const soToken1 = auth.token;
+auth = await login(soEmail, soPassword);
+const soToken2 = auth.token;
 check("create two sessions for one account", typeof soToken1 === "string" && typeof soToken2 === "string");
 r = await call("DELETE", "/sessions", { token: soToken2 });
 check("sign out everywhere succeeds", r.status === 200);
@@ -171,12 +216,12 @@ check("clean up the sign-out account", r.status === 200);
 
 // ----- Rate limiting -----
 const rlEmail = `smoke-rl-${rid()}@example.com`;
-r = await call("POST", "/auth/register", { body: { email: rlEmail, authSecret: hex(64) } });
-const tokenRl = r.json?.token;
-check("register a rate-limit test account", r.status === 200 && typeof tokenRl === "string");
+auth = await register(rlEmail, `smoke-pass-rl-${rid()}`);
+const tokenRl = auth.token;
+check("register a rate-limit test account", auth.status === 200 && typeof tokenRl === "string");
 let limited = false;
 for (let i = 0; i < 30 && !limited; i++) {
-  const attempt = await call("POST", "/auth/login", { body: { email: rlEmail, authSecret: hex(64) } });
+  const attempt = await login(rlEmail, `nope-${rid()}`);
   if (attempt.status === 429) limited = true;
 }
 check("repeated login attempts are rate limited (429)", limited);

@@ -207,6 +207,32 @@ No names, addresses, or payment methods — those live with the MoR.
   deleted account can never keep being charged. If Paddle cannot confirm the cancellation
   (bad credentials, rate limit, outage) the deletion is refused with `502 cancel_failed` rather
   than leaving a live subscription behind; an already-cancelled subscription does not block it.
+- **Cancelling is visible.** A Paddle subscription scheduled to cancel (`scheduled_change` with
+  `action: "cancel"`) reads as `canceled` with the period end, so the app shows “Ends …” and
+  offers **Resume** — `POST /billing/resume` clears the change — instead of a second cancel.
+- **No second subscription.** `POST /billing/checkout` refuses (`409`) when the account already
+  has a live subscription or complimentary access, so “Renew” can never charge twice.
+
+### Complimentary access (`comp`)
+
+Some people get sync for free — family, friends, reviewers, our own account:
+
+```
+ADMIN_TOKEN=… node sync-server/scripts/comp.mjs grant  friend@example.com "family"
+ADMIN_TOKEN=… node sync-server/scripts/comp.mjs revoke friend@example.com
+ADMIN_TOKEN=… node sync-server/scripts/comp.mjs list
+```
+
+- Grant **by email**, whether or not the account exists yet: a granted email is created as `comp`
+  at registration. Granting an existing account upgrades it at once.
+- Backed by the `comp_grants` table and the `/admin/comp` routes, which are **disabled (404)
+  until the `ADMIN_TOKEN` secret is set**. The token is the only thing protecting them — keep it
+  long and random, and never commit it.
+- `comp` is unlimited and non-expiring: the app shows a “Complimentary” badge and hides Subscribe,
+  and checkout refuses the account, so it can never be charged.
+- Revoking flips an existing `comp` account to `expired` (read-only); it can subscribe to regain
+  access. The server never holds, and never needs, anyone's password — comp users sign in like
+  everyone else.
 
 ## 9. Legal pages & entity
 

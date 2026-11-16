@@ -82,7 +82,7 @@ r = await call("POST", "/auth/login/finish", { loginId, finishLoginRequest: logi
 check("login/finish returns a session token", r.status === 200 && typeof r.json?.token === "string", `status ${r.status}`);
 
 r = await call("GET", "/me", undefined, r.json?.token);
-check("the new session works", r.status === 200 && r.json?.plan === "active");
+check("the new session works", r.status === 200 && ["active", "trialing", "comp"].includes(r.json?.plan));
 
 // A loginId cannot be reused
 r = await call("POST", "/auth/login/finish", { loginId, finishLoginRequest: loginFinished.finishLoginRequest });

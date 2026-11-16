@@ -119,6 +119,7 @@ export const backend = {
   syncRefresh: () => call<AppStatus>("sync_refresh"),
   billingCheckout: () => call<string>("billing_checkout"),
   billingCancel: () => call<void>("billing_cancel"),
+  billingResume: () => call<void>("billing_resume"),
   syncEnable: () => call<AppStatus>("sync_enable"),
   syncEnableFile: (path: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),

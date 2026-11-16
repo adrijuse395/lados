@@ -1267,6 +1267,29 @@ pub async fn billing_cancel(app: AppHandle) -> Result<()> {
     }
 }
 
+/// Undoes a scheduled cancellation, so the subscription keeps renewing.
+#[tauri::command]
+pub async fn billing_resume(app: AppHandle) -> Result<()> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to Lados Sync first"))?;
+            crate::sync::billing_resume(&account.server_url, &account.token)
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
 /// Changes the account master password and re-encrypts every synced vault under it, in one
 /// blocking operation. Nothing decrypted ever leaves the device: each vault is decrypted here,
 /// re-encrypted with the new password and only then uploaded. Cloud vaults that are not on this

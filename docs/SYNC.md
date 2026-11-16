@@ -93,16 +93,27 @@ Blob      { vaultId, version -> encrypted .lados bytes }   // object storage (R2
 
 ## 6. Sync protocol (v1)
 
-All endpoints are HTTPS, JSON, authenticated with a bearer token (JWT).
+All endpoints are HTTPS, JSON, authenticated with a bearer token.
+
+Accounts are **OPAQUE** (aPAKE): the server never sees anything password-equivalent. The legacy
+`/auth/register` (fast-verifier) endpoint is **gone**; `/auth/login` survives only so accounts
+created before OPAQUE can sign in once and be upgraded.
 
 ```
-POST /auth/register   { email, authVerifier }            -> { token }
-POST /auth/login      { email, authSecret }              -> { token }   // server verifies
-GET  /vaults                                             -> [ { id, name, version } ]
-POST /vaults          { name }                           -> { id }
-GET  /vaults/{id}                                        -> { version, blob }
-PUT  /vaults/{id}     If-Match: {version}  body=blob     -> { version: n+1 }
+POST /auth/register/start  { email, registrationRequest }  -> { registrationResponse }
+POST /auth/register/finish { email, registrationRecord }   -> { token }
+POST /auth/login/start     { email, startLoginRequest }    -> { loginId, loginResponse }
+POST /auth/login/finish    { loginId, finishLoginRequest } -> { token }
+POST /auth/upgrade/start   { registrationRequest }         -> { registrationResponse }  // attach OPAQUE to a legacy account
+POST /auth/upgrade/finish  { registrationRecord }          -> { ok, passwordChangedAt }
+POST /auth/login           { email, authSecret, previousAuthSecret?, legacyAuthSecret? }  // legacy, upgrade-only
+GET  /me                                                   -> { id, plan, planValidUntil, passwordChangedAt }
+GET  /vaults                                               -> [ { id, name_cipher, version } ]
+POST /vaults               { vaultUuid, nameCipher }       -> { id }
+GET  /vaults/{id}                                          -> { version, blob }
+PUT  /vaults/{id}          If-Match: {version}  body=blob  -> { version: n+1 }
 DELETE /vaults/{id}
+DELETE /account                                            // erases the account, its vaults and any subscription
 ```
 
 **Optimistic concurrency:** `PUT` succeeds only if the client's `If-Match` version

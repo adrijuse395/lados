@@ -132,6 +132,7 @@ pub fn run() {
             commands::sync_refresh,
             commands::billing_checkout,
             commands::billing_cancel,
+            commands::billing_resume,
             commands::change_master_password,
             commands::resync_labels,
             commands::sync_disable,

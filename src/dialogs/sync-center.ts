@@ -453,7 +453,14 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
   // ----- Entitlement (the server is authoritative; this only renders it) -----
   const plan = sync.plan ?? "active";
   const planUntil = sync.planValidUntil;
-  const needsPayment = plan !== "active" && plan !== "comp";
+  const stillPaid = planUntil != null && planUntil > Date.now();
+  // A subscription scheduled to cancel keeps working until its date: offer to resume it.
+  const scheduledCancel = plan === "canceled" && stillPaid;
+  // A failed payment within its grace window is not something to buy your way out of.
+  const paymentFailed = plan === "past_due" && stillPaid;
+  // Only states with no live subscription may start a new one (the server enforces this too).
+  const canSubscribe =
+    plan === "trialing" || plan === "expired" || ((plan === "canceled" || plan === "past_due") && !stillPaid);
 
   const subscribe = () =>
     run(async () => {
@@ -473,7 +480,27 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       if (!confirmed) return;
       await backend.billingCancel();
       toast("Subscription canceled — syncing continues until the period ends.");
+      refresh();
+      setTimeout(refresh, 2500); // show the scheduled cancellation once the webhook lands
     });
+
+  const resumeSubscription = () =>
+    run(async () => {
+      await backend.billingResume();
+      toast("Subscription resumed — it will renew as usual.");
+      refresh();
+      setTimeout(refresh, 2500);
+    });
+
+  const notice = (() => {
+    if (plan === "expired" || (plan === "past_due" && !stillPaid)) {
+      return "Syncing is paused. You can still download your vaults from the cloud — subscribe to resume uploads.";
+    }
+    if (paymentFailed) {
+      return "Your last payment didn't go through. Use the link Paddle emailed you to update your card — syncing keeps working until the period ends.";
+    }
+    return null;
+  })();
 
   const planBadge = (() => {
     switch (plan) {
@@ -523,15 +550,21 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     h(
       "div",
       { class: "sync-actions" },
-      needsPayment
+      canSubscribe
         ? h(
             "button",
             { type: "button", class: "button small primary", onClick: () => void subscribe() },
             plan === "trialing" ? "Subscribe" : "Renew",
           )
-        : plan === "active"
-          ? h("button", { type: "button", class: "button small", onClick: () => void cancelSubscription() }, "Cancel subscription")
-          : null,
+        : scheduledCancel
+          ? h(
+              "button",
+              { type: "button", class: "button small primary", onClick: () => void resumeSubscription() },
+              "Resume subscription",
+            )
+          : plan === "active"
+            ? h("button", { type: "button", class: "button small", onClick: () => void cancelSubscription() }, "Cancel subscription")
+            : null,
       h(
         "button",
         {
@@ -545,13 +578,8 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       h("button", { type: "button", class: "button small", onClick: () => void signOut(refresh) }, "Sign out"),
       h("button", { type: "button", class: "button small danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
     ),
-    plan === "expired" || plan === "past_due"
-      ? h(
-          "div",
-          { class: "notice warning" },
-          svgIcon("warning"),
-          h("span", { text: "Syncing is paused. You can still download your vaults from the cloud — renew to resume uploads." }),
-        )
+    notice
+      ? h("div", { class: "notice warning" }, svgIcon("warning"), h("span", { text: notice }))
       : null,
   );
 

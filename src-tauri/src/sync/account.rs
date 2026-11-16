@@ -49,18 +49,6 @@ fn token_from(response: Response) -> Result<String> {
         .ok_or_else(|| Error::System(format!("unexpected auth response ({})", response.status)))
 }
 
-/// Registers a new account. Fails if the email is already taken.
-pub fn register(base: &str, email: &str, auth_secret: &str) -> Result<String> {
-    let url = format!("{}/auth/register", base.trim_end_matches('/'));
-    let body = json!({ "email": email, "authSecret": auth_secret });
-    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
-    match response.status {
-        200 => token_from(response),
-        409 => Err(Error::invalid("That email is already registered")),
-        _ => Err(Error::System(format!("register failed ({})", response.status))),
-    }
-}
-
 /// Logs in with the derived auth secret. `previous_secret` and `legacy_secret` are the
 /// older derivations, sent only so a pre-existing account can authenticate once and be
 /// upgraded. Fails with invalid credentials if wrong.
@@ -153,6 +141,19 @@ pub fn billing_checkout(base: &str, token: &str) -> Result<String> {
             .map(str::to_string)
             .ok_or_else(|| Error::System("the checkout response had no URL".into())),
         401 => Err(Error::SessionExpired),
+        409 => {
+            let code = response
+                .value
+                .as_ref()
+                .and_then(|value| value.get("error"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            Err(Error::invalid(match code {
+                "already_subscribed" => "You already have a subscription — resume it to keep it going.",
+                "not_billable" => "This account already has free access.",
+                _ => "This account cannot be charged.",
+            }))
+        }
         503 => Err(Error::invalid("Subscriptions are not available yet")),
         _ => Err(Error::System(format!("could not start the checkout ({})", response.status))),
     }
@@ -166,8 +167,22 @@ pub fn billing_cancel(base: &str, token: &str) -> Result<()> {
         200 => Ok(()),
         400 => Err(Error::invalid("There is no subscription to cancel")),
         401 => Err(Error::SessionExpired),
+        409 => Err(Error::invalid("This subscription already has a pending change — reopen the sync space to see it.")),
         503 => Err(Error::invalid("Subscriptions are not available yet")),
         _ => Err(Error::System(format!("could not cancel the subscription ({})", response.status))),
+    }
+}
+
+/// Undoes a scheduled cancellation, so the subscription keeps renewing.
+pub fn billing_resume(base: &str, token: &str) -> Result<()> {
+    let url = format!("{}/billing/resume", base.trim_end_matches('/'));
+    let response = http::send(Method::POST, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => Ok(()),
+        400 => Err(Error::invalid("There is no subscription to resume")),
+        401 => Err(Error::SessionExpired),
+        503 => Err(Error::invalid("Subscriptions are not available yet")),
+        _ => Err(Error::System(format!("could not resume the subscription ({})", response.status))),
     }
 }
 
