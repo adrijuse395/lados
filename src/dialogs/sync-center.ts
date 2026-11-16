@@ -462,11 +462,33 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
   const canSubscribe =
     plan === "trialing" || plan === "expired" || ((plan === "canceled" || plan === "past_due") && !stillPaid);
 
+  // Paddle's webhook flips the plan within seconds of paying. Poll briefly so the badge and the
+  // buttons update on their own, instead of waiting for a manual refresh.
+  const watchForPayment = () => {
+    const before = plan;
+    void (async () => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        try {
+          const next = (await backend.syncRefresh()).sync?.plan ?? before;
+          if (next !== before) {
+            await refresh();
+            toast(next === "active" ? "Sync is active — you're all set." : `Plan updated: ${next}.`, "success");
+            return;
+          }
+        } catch {
+          // Offline or transient: keep waiting.
+        }
+      }
+    })();
+  };
+
   const subscribe = () =>
     run(async () => {
       const url = await backend.billingCheckout();
       await backend.openExternalUrl(url);
       toast("Finish in your browser — syncing turns on as soon as the payment goes through.", "info", 8000);
+      watchForPayment();
     });
 
   const cancelSubscription = () =>
