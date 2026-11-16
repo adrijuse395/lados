@@ -363,13 +363,16 @@ function hasActivePlan(account: AccountRow): boolean {
 // ----- Billing (Paddle) -----
 //
 // The server is the only writer of `plan`: the client can start a checkout, but entitlement
-// changes come exclusively from a signed webhook. Everything is inert until the three Paddle
-// settings exist. See docs/BILLING.md.
+// changes come exclusively from a signed webhook. Each endpoint depends only on what it needs —
+// selling needs the API key + price, the webhook needs its secret — so a missing secret disables
+// the webhook (and, with it, plan changes) instead of all of billing. See docs/BILLING.md.
 
 const TRIAL_MS = 14 * 24 * 60 * 60 * 1000;
 
-function paddleConfigured(env: Env): boolean {
-  return Boolean(env.PADDLE_API_KEY && env.PADDLE_WEBHOOK_SECRET && env.PADDLE_PRICE_ID);
+/// Whether the server can sell: an API key and a price. Missing the webhook secret does not turn
+/// this off (it only disables the webhook that flips the plan).
+function billingEnabled(env: Env): boolean {
+  return Boolean(env.PADDLE_API_KEY && env.PADDLE_PRICE_ID);
 }
 
 /// Sandbox keys contain `_sdbx_`; everything else is production.
@@ -377,10 +380,10 @@ function paddleBase(env: Env): string {
   return (env.PADDLE_API_KEY ?? "").includes("_sdbx_") ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
 }
 
-/// The plan a brand-new account starts on: a 14-day trial once billing is live, otherwise
-/// simply active (so nothing changes while billing is not configured).
+/// The plan a brand-new account starts on: a 14-day trial once billing is set up (an API key and
+/// a price exist), otherwise simply active (so a server without Paddle just works).
 function initialPlan(env: Env): { plan: string; validUntil: number | null } {
-  return paddleConfigured(env) ? { plan: "trialing", validUntil: Date.now() + TRIAL_MS } : { plan: "active", validUntil: null };
+  return billingEnabled(env) ? { plan: "trialing", validUntil: Date.now() + TRIAL_MS } : { plan: "active", validUntil: null };
 }
 
 /// Maps a Paddle subscription status and period to our entitlement.
@@ -445,7 +448,7 @@ async function applyBilling(
 
 /// Creates a Paddle checkout bound to this account and returns its hosted URL.
 async function createCheckout(env: Env, account: AccountRow): Promise<Response> {
-  if (!paddleConfigured(env)) return json({ error: "billing_unavailable" }, 503);
+  if (!billingEnabled(env)) return json({ error: "billing_unavailable" }, 503);
   const response = await fetch(`${paddleBase(env)}/transactions`, {
     method: "POST",
     headers: {
@@ -474,7 +477,7 @@ async function createCheckout(env: Env, account: AccountRow): Promise<Response> 
 
 /// Cancels at the end of the paid period (access continues until then).
 async function cancelSubscription(env: Env, account: AccountRow): Promise<Response> {
-  if (!paddleConfigured(env)) return json({ error: "billing_unavailable" }, 503);
+  if (!env.PADDLE_API_KEY) return json({ error: "billing_unavailable" }, 503);
   const subscriptionId = account.billing_subscription_id;
   if (!subscriptionId) return json({ error: "no_subscription" }, 400);
   const response = await fetch(`${paddleBase(env)}/subscriptions/${subscriptionId}/cancel`, {

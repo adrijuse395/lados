@@ -242,6 +242,14 @@ of this is a *gestor* question — get one before the first payout.
 > those in `wrangler.toml`, so any variable added only in the dashboard **disappears** — which
 > silently switches billing off (`billing_unavailable`). `PADDLE_PRICE_ID` and
 > `TOKEN_TTL_SECONDS` live in `wrangler.toml` and are fine.
+>
+> Deploying also *applies* secret edits saved in the dashboard but not yet deployed, so a stale
+> `PADDLE_API_KEY` can keep returning errors until the next `wrangler deploy`.
+>
+> **Least coupling.** Each endpoint only needs its own settings: `/billing/checkout` and
+> `/billing/cancel` need the API key (+ price for checkout); `/billing/webhook` needs the
+> webhook secret; the trial for new accounts needs the API key + price. A missing secret therefore
+> disables only the webhook — it does **not** hand out free accounts.
 
 1. **Server**: billing columns + `billing_events`, webhook (provider adapter), `/billing/checkout`,
    expose `plan`/`plan_valid_until` in `/me`.
