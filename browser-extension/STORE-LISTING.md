@@ -102,29 +102,45 @@ password manager, autofill, offline, local, privacy, lados
 
 ---
 
+## Visual assets (sizes)
+
+| Asset | Chrome Web Store | Microsoft Edge Add‑ons |
+| --- | --- | --- |
+| Store icon / logo | **128×128 PNG** — required | **300×300** recommended (min 128×128), per language |
+| Screenshots | **≥1, up to 5** — 1280×800 or 640×400, full bleed | optional, up to 6 — **640×480 or 1280×800** |
+| Small promo tile | 440×280 — recommended | 440×280 — listed among required assets |
+| Large / marquee tile | 1400×560 — optional | 1400×560 PNG — optional |
+
+*Full bleed* = the image runs to the edges: square corners, no padding, no drop shadow. Google
+prefers 1280×800 but **downscales every screenshot to 640×400**, so avoid fine text.
+
 ## Publishing checklist
 
-- [x] Build the package — `python3 scripts/build-extension.py` → `build/lados-chrome.zip`
+- [x] Package — `python3 scripts/build-extension.py` → `build/lados-chrome.zip`
 - [x] Store icon 128×128 — `icons/icon-128.png`
-- [x] `manifest.json` at the zip root (required)
+- [x] `manifest.json` at the zip root
 - [x] No remote code; `permissions: []`; loopback `host_permissions` only
-- [ ] **Screenshots** — at least one, 1280×800 or 640×400 (see below)
+- [ ] **Screenshots** — Chrome needs ≥1 (see below); Edge optional
+- [ ] Chrome small promo tile 440×280 (recommended)
+- [ ] Edge logo 300×300, and (if asked) the 440×280 small tile
 - [ ] **Privacy policy URL** live on the web (see below)
-- [ ] Chrome Web Store: pay the one‑time $5 developer fee
-- [ ] Edge Add‑ons: no fee
+- [ ] Chrome Web Store: pay the one‑time $5 developer fee; Edge: no fee
 
 ### Screenshots
 
-Chrome requires ≥1 screenshot sized **1280×800** or **640×400** (Edge: 1280×800). Capture the
-extension in use:
+These are the **gallery images on the store page** — what a new user sees before installing.
+They should show the extension *working*, must be a real capture (not a mock) of the latest
+version, and be full bleed. To capture one:
 
 1. `chrome://extensions` → **Developer mode** → **Load unpacked** → pick `browser-extension/build/chrome`.
-2. Open any site with a login form while the Lados app is running and the vault is unlocked.
-3. Screenshot the **“Fill with Lados”** pill (and, for a second shot, the multi‑login picker).
+2. Open a site with a login form while the Lados app runs and the vault is unlocked.
+3. Screenshot the **“Fill with Lados”** pill; a second shot of the multi‑login picker is nice.
+
+(For reference: the pill sits next to a login field; the picker lists several matching logins.)
 
 ### Hosting the privacy policy
 
-Chrome and Edge need a public URL. Two options:
+Both stores ask for a **Privacy policy URL** (a public page). Two options:
 
 - **Quick:** the rendered GitHub page
   `https://github.com/adrijuse395/lados/blob/main/docs/PRIVACY.md`
