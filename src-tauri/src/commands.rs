@@ -1061,6 +1061,64 @@ pub async fn sync_enable_file(
     }
 }
 
+/// Re-encrypts a vault with the sync master password, so it can then be synced. The caller
+/// verifies the master password and re-runs the normal "enable sync" step afterwards.
+#[tauri::command]
+pub async fn rekey_vault_file(
+    app: AppHandle,
+    path: String,
+    password: Option<String>,
+    key_file: Option<String>,
+    master_password: String,
+    master_key_file: Option<String>,
+) -> Result<()> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let (base, email) = {
+                let settings = state.settings();
+                let account = settings
+                    .sync_account
+                    .clone()
+                    .ok_or_else(|| Error::invalid("Sign in to sync first"))?;
+                (account.server_url, account.email)
+            };
+
+            let master = Zeroizing::new(master_password);
+            require_password(&master)?;
+            let master_composite = composite_key(&master, master_key_file.as_deref())?;
+            if !is_the_account_password(&base, &email, &master_composite) {
+                return Err(Error::invalid("That is not your sync master password"));
+            }
+
+            let path = PathBuf::from(path);
+            let already_open = matches!(&*state.session(), Session::Unlocked(open) if open.path() == path);
+            if already_open {
+                let key = VaultKey::generate(&master_composite, KdfParams::calibrated())?;
+                state.with_vault_mut(|open| open.change_key(master_composite, key))?;
+            } else {
+                if !path.is_file() {
+                    return Err(Error::invalid(format!("File not found: {}", path.display())));
+                }
+                let password = Zeroizing::new(password.unwrap_or_default());
+                require_password(&password)?;
+                let composite = composite_key(&password, key_file.as_deref())?;
+                let mut open = OpenVault::open(path, composite)?;
+                let key = VaultKey::generate(&master_composite, KdfParams::calibrated())?;
+                open.change_key(master_composite, key)?;
+            }
+            Ok(())
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = (app, path, password, key_file, master_password, master_key_file);
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
 /// Deletes the sync account and everything it holds on the server, then signs out locally.
 /// The vaults themselves stay on this device, as local-only.
 #[tauri::command]

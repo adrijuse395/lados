@@ -360,8 +360,10 @@ The local application is **never** disabled — only the cloud part stops when u
   client verifies by attempting an OPAQUE login with that vault's credentials and refuses if it
   fails, telling the user to set the vault to the master password first. This prevents a cloud
   copy that could never be downloaded.
-- *Coordinated change* (changing the master password once) and *re-key-on-add* are the intended
-  follow-ups, using the same machinery.
+- *Re-key-on-add* is implemented: when a vault's master password is not the account's, the app
+  offers to re-encrypt it with the master password (after confirming that password) instead of
+  just refusing. *Coordinated change* (changing the master password once, across the account and
+  synced vaults) is the remaining follow-up.
 
 ## 20. Threat model
 

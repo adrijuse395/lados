@@ -115,6 +115,8 @@ export const backend = {
   syncEnable: () => call<AppStatus>("sync_enable"),
   syncEnableFile: (path: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),
+  rekeyVaultFile: (path: string, password: string | null, keyFile: string | null, masterPassword: string, masterKeyFile: string | null) =>
+    call<void>("rekey_vault_file", { path, password, keyFile, masterPassword, masterKeyFile }),
   syncDisable: () => call<AppStatus>("sync_disable"),
   syncDisableFile: (path: string) => call<AppStatus>("sync_disable_file", { path }),
   syncDisableVault: (localVaultId: string) => call<AppStatus>("sync_disable_vault", { localVaultId }),

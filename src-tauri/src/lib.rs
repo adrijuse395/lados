@@ -119,6 +119,7 @@ pub fn run() {
             commands::sync_sign_out,
             commands::sync_enable,
             commands::sync_enable_file,
+            commands::rekey_vault_file,
             commands::sync_disable,
             commands::sync_disable_file,
             commands::sync_disable_vault,

@@ -15,6 +15,23 @@ import { estimateStrength } from "../utils/strength";
 import { credentialsDialog } from "./credentials";
 import { describeChanges, hasChanges } from "./reports";
 
+/** A vault whose master password isn't the account's cannot be synced until it is re-keyed. */
+function isDifferentMaster(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("different master password");
+}
+
+/** Asks for a vault's or the master credentials; returns them, or null if cancelled. */
+function askPassword(title: string, message: string, initialKeyFile: string | null) {
+  return credentialsDialog<{ password: string; keyFile: string | null }>({
+    title,
+    message,
+    submitLabel: "Continue",
+    busyLabel: "Checking…",
+    initialKeyFile,
+    action: async (credentials) => credentials,
+  });
+}
+
 /** Opens the sync space: the sign-in form when signed out, the management view otherwise. */
 export async function openSyncCenter(): Promise<void> {
   const container = h("div", { class: "stack sync-center" });
@@ -132,23 +149,48 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     }
   };
 
-  /** Syncs a local copy: in place when it is the open vault, otherwise after asking its password. */
+  /** Syncs a local copy: in place when it is the open vault, otherwise after asking its password.
+   *  If the vault's master password isn't the account's, it is re-encrypted first. */
   const syncCopy = (path: string, title: string) =>
     run(async () => {
+      const rekeyed = "This vault was re-encrypted with your master password and is now synced";
       if (openPath && path === openPath) {
+        try {
+          store.status = await backend.syncEnable();
+          toast(title === "Sync now" ? "Synced" : "This vault is now synced", "success");
+          return;
+        } catch (error) {
+          if (!isDifferentMaster(error)) throw error;
+        }
+        const master = await askPassword(
+          "Use your sync master password",
+          `Synced vaults share your sync master password. Enter it to re-encrypt “${fileNameOf(path)}”.`,
+          store.status?.keyFile ?? null,
+        );
+        if (!master) return;
+        await backend.rekeyVaultFile(path, null, null, master.password, master.keyFile);
         store.status = await backend.syncEnable();
-      } else {
-        const status = await credentialsDialog({
-          title,
-          message: `Enter the master password of “${fileNameOf(path)}”.`,
-          submitLabel: "Sync",
-          busyLabel: "Syncing…",
-          action: ({ password, keyFile }) => backend.syncEnableFile(path, password, keyFile),
-        });
-        if (status === null) return;
-        store.status = status;
+        toast(rekeyed, "success");
+        return;
       }
-      toast(title === "Sync now" ? "Synced" : "This vault is now synced", "success");
+      const vault = await askPassword("Sync this vault", `Enter the master password of “${fileNameOf(path)}”.`, null);
+      if (!vault) return;
+      try {
+        store.status = await backend.syncEnableFile(path, vault.password, vault.keyFile);
+        toast(title === "Sync now" ? "Synced" : "This vault is now synced", "success");
+        return;
+      } catch (error) {
+        if (!isDifferentMaster(error)) throw error;
+      }
+      const master = await askPassword(
+        "Use your sync master password",
+        `Synced vaults share your sync master password. Enter it to re-encrypt “${fileNameOf(path)}”.`,
+        null,
+      );
+      if (!master) return;
+      await backend.rekeyVaultFile(path, vault.password, vault.keyFile, master.password, master.keyFile);
+      store.status = await backend.syncEnableFile(path, master.password, master.keyFile);
+      toast(rekeyed, "success");
     });
 
   const stopSyncing = (localVaultId: string) =>
