@@ -1,6 +1,6 @@
 # Lados Sync server
 
-The **zero-knowledge** sync backend for the [Lados](https://github.com/adrijuse395/lados)
+The **zero-knowledge** sync backend for the [Lados](https://github.com/ladospwm/lados)
 password manager, running as a **Cloudflare Worker**.
 
 It stores an **opaque, encrypted** copy of each vault (in R2) plus minimal metadata

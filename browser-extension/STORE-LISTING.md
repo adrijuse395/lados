@@ -27,7 +27,7 @@ Autofill logins from your local Lados vault. Offline, no account, no cloud.
 
 **Homepage URL**
 ```
-https://github.com/adrijuse395/lados
+https://github.com/ladospwm/lados
 ```
 
 **Detailed description**
@@ -148,4 +148,4 @@ https://<your-domain>/privacy
 ```
 
 The Markdown source of truth is `docs/PRIVACY.md`; the site page mirrors it. Fallback link if
-reviewers need one: `https://github.com/adrijuse395/lados/blob/main/docs/PRIVACY.md`.
+reviewers need one: `https://github.com/ladospwm/lados/blob/main/docs/PRIVACY.md`.

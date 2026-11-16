@@ -42,7 +42,7 @@ Vaults are sealed offline. Opening a `.lados` file never requires a network.
 ## Develop
 
 ```bash
-git clone https://github.com/adrijuse395/lados.git
+git clone https://github.com/ladospwm/lados.git
 cd lados
 npm install
 npm run tauri dev
@@ -90,7 +90,7 @@ Releases must sign update packages. The public key lives in `src-tauri/tauri.con
 | `TAURI_SIGNING_PRIVATE_KEY` | Contents of the private key file |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password if the key has one (omit or leave empty otherwise) |
 
-Installed apps check `https://github.com/adrijuse395/lados/releases/latest/download/latest.json` and can download/install the new build in-app. Vault data never leaves the machine; only that HTTPS check and the installer download use the network.
+Installed apps check `https://github.com/ladospwm/lados/releases/latest/download/latest.json` and can download/install the new build in-app. Vault data never leaves the machine; only that HTTPS check and the installer download use the network.
 
 ## Project layout
 

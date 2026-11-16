@@ -1,9 +1,9 @@
 {
   "manifest_version": 2,
   "name": "Lados",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Autofill logins from your local Lados vault. Offline, no account, no cloud.",
-  "homepage_url": "https://github.com/adrijuse395/lados",
+  "homepage_url": "https://github.com/ladospwm/lados",
   "browser_specific_settings": {
     "gecko": {
       "id": "lados@adrijuse395.github.io",
