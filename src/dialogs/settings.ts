@@ -183,13 +183,7 @@ export async function openSettings(): Promise<void> {
                     { type: "button", class: "link-button", onClick: () => void openBrowserDownload("firefox") },
                     "download Firefox",
                   ),
-                  ", then ",
-                  h(
-                    "button",
-                    { type: "button", class: "link-button", onClick: () => void openExtensionStore("firefox") },
-                    "add the extension",
-                  ),
-                  ".",
+                  ", then open this again to add the extension in one click.",
                 ),
             h(
               "button",

@@ -115,6 +115,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             browsers::detected_browsers,
+            browsers::open_in_browser,
             commands::get_status,
             commands::update_preferences,
             commands::forget_recent_vault,

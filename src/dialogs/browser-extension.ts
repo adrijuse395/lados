@@ -53,14 +53,20 @@ async function openUrl(url: string, what: string): Promise<void> {
   }
 }
 
-/** Opens a browser's published store page, or says that it is not published yet. */
+/** Opens a browser's published store page, or says that it is not published yet. The page opens
+ *  in that browser itself (so Firefox's page does not land in Chrome, which would offer Firefox). */
 export async function openExtensionStore(id: BrowserId = "firefox"): Promise<void> {
   const store = STORES[id];
   if (!store.url) {
     toast(`The ${store.label} version isn’t published yet.`, "info");
     return;
   }
-  await openUrl(store.url, `the ${store.label} add-on page`);
+  try {
+    await backend.openInBrowser(id, store.url);
+    toast(`Opening the ${store.label} add-on page in ${store.label}.`, "info");
+  } catch {
+    toast(`Could not open ${store.label}. Visit ${store.url}`, "error");
+  }
 }
 
 /** Opens a browser's download page, for when it is not installed yet. */
@@ -84,7 +90,7 @@ function firefoxSteps(installed: boolean): Child[] {
       ),
       h("p", {
         class: "field-hint",
-        text: "On the page that opens, click “Add to Firefox” and confirm. There is no file to download.",
+        text: "The add-on page opens in Firefox — click “Add to Firefox” there and confirm. There is no file to download.",
       }),
     ];
   }
@@ -93,12 +99,11 @@ function firefoxSteps(installed: boolean): Child[] {
     h(
       "div",
       { class: "browser-choices" },
-      actionButton("1. Download Firefox", () => void openBrowserDownload("firefox"), true),
-      actionButton("2. Add the Lados extension", () => void openExtensionStore("firefox")),
+      actionButton("Download Firefox", () => void openBrowserDownload("firefox"), true),
     ),
     h("p", {
       class: "field-hint",
-      text: "Install Firefox, then click the second button to add the extension.",
+      text: "Install Firefox, then open this dialog again (Settings ▸ Install the browser extension) to add the Lados extension in one click.",
     }),
   ];
 }
