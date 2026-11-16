@@ -11,7 +11,7 @@ import { h, mount, type Child } from "../ui/dom";
 import { svgIcon } from "../ui/icons";
 import { confirmDialog, showDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
-import { relativeTime } from "../utils/format";
+import { formatDay, relativeTime } from "../utils/format";
 import { estimateStrength } from "../utils/strength";
 import { credentialsDialog } from "./credentials";
 import { describeChanges, hasChanges } from "./reports";
@@ -450,6 +450,52 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     return h("div", { class: "sync-map-row" }, cloudNode, link, deviceNode);
   });
 
+  // ----- Entitlement (the server is authoritative; this only renders it) -----
+  const plan = sync.plan ?? "active";
+  const planUntil = sync.planValidUntil;
+  const needsPayment = plan !== "active" && plan !== "comp";
+
+  const subscribe = () =>
+    run(async () => {
+      const url = await backend.billingCheckout();
+      await backend.openExternalUrl(url);
+      toast("Finish in your browser — syncing turns on as soon as the payment goes through.", "info", 8000);
+    });
+
+  const cancelSubscription = () =>
+    run(async () => {
+      const confirmed = await confirmDialog({
+        title: "Cancel your subscription?",
+        message: "You keep syncing until the end of the period you have already paid for, and your vaults stay on the server.",
+        confirmLabel: "Cancel subscription",
+        danger: true,
+      });
+      if (!confirmed) return;
+      await backend.billingCancel();
+      toast("Subscription canceled — syncing continues until the period ends.");
+    });
+
+  const planBadge = (() => {
+    switch (plan) {
+      case "comp":
+        return { text: "Complimentary", tone: "success" };
+      case "active":
+        return { text: "Active", tone: "success" };
+      case "trialing": {
+        const days = planUntil ? Math.max(0, Math.ceil((planUntil - Date.now()) / 86_400_000)) : null;
+        return { text: days != null ? `Trial · ${days} day${days === 1 ? "" : "s"} left` : "Trial", tone: "neutral" };
+      }
+      case "past_due":
+        return { text: "Payment failed", tone: "warning" };
+      case "canceled":
+        return { text: planUntil ? `Ends ${formatDay(planUntil)}` : "Cancels soon", tone: "warning" };
+      case "expired":
+        return { text: "Expired", tone: "warning" };
+      default:
+        return { text: plan, tone: "neutral" };
+    }
+  })();
+
   const accountCard = h(
     "section",
     { class: "sync-card sync-account" },
@@ -464,7 +510,10 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         h(
           "span",
           { class: "sync-account-meta" },
-          h("span", { class: "chip chip-success" }, "Signed in"),
+          h("span", { class: ["chip", `chip-${planBadge.tone}`] }, planBadge.text),
+          plan === "active" && planUntil
+            ? h("span", { class: "muted", text: `Renews ${formatDay(planUntil)}` })
+            : null,
           sync.passwordChangedAt
             ? h("span", { class: "muted", text: `Master password changed ${relativeTime(sync.passwordChangedAt)}` })
             : null,
@@ -474,7 +523,15 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     h(
       "div",
       { class: "sync-actions" },
-      h("button", { type: "button", class: "button small", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
+      needsPayment
+        ? h(
+            "button",
+            { type: "button", class: "button small primary", onClick: () => void subscribe() },
+            plan === "trialing" ? "Subscribe" : "Renew",
+          )
+        : plan === "active"
+          ? h("button", { type: "button", class: "button small", onClick: () => void cancelSubscription() }, "Cancel subscription")
+          : null,
       h(
         "button",
         {
@@ -488,6 +545,14 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       h("button", { type: "button", class: "button small", onClick: () => void signOut(refresh) }, "Sign out"),
       h("button", { type: "button", class: "button small danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
     ),
+    plan === "expired" || plan === "past_due"
+      ? h(
+          "div",
+          { class: "notice warning" },
+          svgIcon("warning"),
+          h("span", { text: "Syncing is paused. You can still download your vaults from the cloud — renew to resume uploads." }),
+        )
+      : null,
   );
 
   const mapCard = h(

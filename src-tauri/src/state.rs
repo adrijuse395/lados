@@ -200,6 +200,8 @@ impl AppState {
                     this_vault_synced: synced.is_some(),
                     last_synced_at: synced.and_then(|synced| synced.last_synced_at),
                     password_changed_at: account.and_then(|account| account.password_changed_at),
+                    plan: account.and_then(|account| account.plan.clone()),
+                    plan_valid_until: account.and_then(|account| account.plan_valid_until),
                     cloud,
                     local,
                 }

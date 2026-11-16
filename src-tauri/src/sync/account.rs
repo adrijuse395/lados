@@ -116,11 +116,13 @@ pub fn set_vault_label(base: &str, token: &str, vault_id: &str, name_cipher: &st
 #[serde(rename_all = "camelCase")]
 pub struct AccountInfo {
     pub plan: String,
+    /// End of the current paid (or trial) period, in Unix milliseconds. `None` if there is none.
+    pub plan_valid_until: Option<i64>,
     /// When the master password last changed, in Unix milliseconds. `None` if it never did.
     pub password_changed_at: Option<i64>,
 }
 
-/// Reads the account: its plan and when its master password last changed.
+/// Reads the account: its plan, the current period end, and when the master password last changed.
 pub fn me(base: &str, token: &str) -> Result<AccountInfo> {
     let url = format!("{}/me", base.trim_end_matches('/'));
     let response = http::send(Method::GET, &url, Some(token), None, None, None)?;
@@ -129,11 +131,43 @@ pub fn me(base: &str, token: &str) -> Result<AccountInfo> {
             let value = response.value.unwrap_or(serde_json::Value::Null);
             Ok(AccountInfo {
                 plan: value.get("plan").and_then(serde_json::Value::as_str).unwrap_or("active").to_string(),
+                plan_valid_until: value.get("planValidUntil").and_then(serde_json::Value::as_i64),
                 password_changed_at: value.get("passwordChangedAt").and_then(serde_json::Value::as_i64),
             })
         }
         401 => Err(Error::SessionExpired),
         _ => Err(Error::System(format!("could not read the account ({})", response.status))),
+    }
+}
+
+/// Starts a subscription checkout and returns the hosted checkout URL to open in a browser.
+pub fn billing_checkout(base: &str, token: &str) -> Result<String> {
+    let url = format!("{}/billing/checkout", base.trim_end_matches('/'));
+    let response = http::send(Method::POST, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => response
+            .value
+            .as_ref()
+            .and_then(|value| value.get("url"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or_else(|| Error::System("the checkout response had no URL".into())),
+        401 => Err(Error::SessionExpired),
+        503 => Err(Error::invalid("Subscriptions are not available yet")),
+        _ => Err(Error::System(format!("could not start the checkout ({})", response.status))),
+    }
+}
+
+/// Cancels the subscription at the end of the paid period (access continues until then).
+pub fn billing_cancel(base: &str, token: &str) -> Result<()> {
+    let url = format!("{}/billing/cancel", base.trim_end_matches('/'));
+    let response = http::send(Method::POST, &url, Some(token), None, None, None)?;
+    match response.status {
+        200 => Ok(()),
+        400 => Err(Error::invalid("There is no subscription to cancel")),
+        401 => Err(Error::SessionExpired),
+        503 => Err(Error::invalid("Subscriptions are not available yet")),
+        _ => Err(Error::System(format!("could not cancel the subscription ({})", response.status))),
     }
 }
 

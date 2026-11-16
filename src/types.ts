@@ -94,6 +94,10 @@ export interface SyncView {
   lastSyncedAt: number | null;
   /** When the account master password last changed, in Unix milliseconds. */
   passwordChangedAt: number | null;
+  /** Entitlement: "comp" | "trialing" | "active" | "past_due" | "canceled" | "expired". */
+  plan: string | null;
+  /** End of the current paid or trial period, in Unix milliseconds. */
+  planValidUntil: number | null;
   /** Cloud vaults known to this device, grouped by the vault's own identity. */
   cloud: CloudVaultView[];
   /** Vaults on this device that are not synced. */

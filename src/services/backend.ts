@@ -117,6 +117,8 @@ export const backend = {
   syncSignOut: () => call<AppStatus>("sync_sign_out"),
   syncSignOutEverywhere: () => call<AppStatus>("sync_sign_out_everywhere"),
   syncRefresh: () => call<AppStatus>("sync_refresh"),
+  billingCheckout: () => call<string>("billing_checkout"),
+  billingCancel: () => call<void>("billing_cancel"),
   syncEnable: () => call<AppStatus>("sync_enable"),
   syncEnableFile: (path: string, password: string, keyFile: string | null) =>
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),

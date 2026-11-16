@@ -15,6 +15,10 @@ export interface Env {
   TOKEN_TTL_SECONDS: string;
   /** OPAQUE server setup (OPRF seed + key pair). A secret; its leak enables offline guessing. */
   OPAQUE_SERVER_SETUP: string;
+  /** Billing (Paddle). Absent until configured, which keeps the whole flow inert. See docs/BILLING.md. */
+  PADDLE_API_KEY?: string;
+  PADDLE_WEBHOOK_SECRET?: string;
+  PADDLE_PRICE_ID?: string;
 }
 
 // The OPAQUE WASM is imported as a module (compiled at deploy time) and instantiated once.
@@ -71,6 +75,7 @@ interface AccountRow {
   email: string;
   plan: string;
   plan_valid_until: number | null;
+  billing_subscription_id: string | null;
   password_changed_at: number | null;
 }
 
@@ -93,7 +98,7 @@ async function authenticate(env: Env, request: Request): Promise<AccountRow | nu
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.plan_valid_until AS plan_valid_until, a.password_changed_at AS password_changed_at
+    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.plan_valid_until AS plan_valid_until, a.billing_subscription_id AS billing_subscription_id, a.password_changed_at AS password_changed_at
        FROM sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
@@ -161,14 +166,15 @@ async function register(env: Env, request: Request): Promise<Response> {
   const salt = randomHex(16);
   const verifier = await verifierFor(salt, authSecret);
   const id = crypto.randomUUID();
+  const start = initialPlan(env);
   await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, created_at) VALUES (?, ?, ?, ?, 'argon2v2', 'active', ?)",
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, plan, plan_valid_until, created_at) VALUES (?, ?, ?, ?, 'argon2v2', ?, ?, ?)",
   )
-    .bind(id, email, salt, verifier, Date.now())
+    .bind(id, email, salt, verifier, start.plan, start.validUntil, Date.now())
     .run();
 
   const token = await startSession(env, id);
-  return json({ token, plan: "active" });
+  return json({ token, plan: start.plan });
 }
 
 async function login(env: Env, request: Request): Promise<Response> {
@@ -247,13 +253,14 @@ async function opaqueRegisterFinish(env: Env, request: Request): Promise<Respons
   if (existing) return json({ error: "email_taken" }, 409);
 
   const id = crypto.randomUUID();
+  const start = initialPlan(env);
   await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, created_at) VALUES (?, ?, '', '', 'opaque', ?, 'active', ?)",
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, plan_valid_until, created_at) VALUES (?, ?, '', '', 'opaque', ?, ?, ?, ?)",
   )
-    .bind(id, email, body.registrationRecord, Date.now())
+    .bind(id, email, body.registrationRecord, start.plan, start.validUntil, Date.now())
     .run();
   const token = await startSession(env, id);
-  return json({ token, plan: "active" });
+  return json({ token, plan: start.plan });
 }
 
 /// Login, step 1: the server response plus a short-lived id holding its handshake state.
@@ -351,6 +358,181 @@ function hasActivePlan(account: AccountRow): boolean {
     return account.plan_valid_until != null && account.plan_valid_until > Date.now();
   }
   return false;
+}
+
+// ----- Billing (Paddle) -----
+//
+// The server is the only writer of `plan`: the client can start a checkout, but entitlement
+// changes come exclusively from a signed webhook. Everything is inert until the three Paddle
+// settings exist. See docs/BILLING.md.
+
+const TRIAL_MS = 14 * 24 * 60 * 60 * 1000;
+
+function paddleConfigured(env: Env): boolean {
+  return Boolean(env.PADDLE_API_KEY && env.PADDLE_WEBHOOK_SECRET && env.PADDLE_PRICE_ID);
+}
+
+/// Sandbox keys contain `_sdbx_`; everything else is production.
+function paddleBase(env: Env): string {
+  return (env.PADDLE_API_KEY ?? "").includes("_sdbx_") ? "https://sandbox-api.paddle.com" : "https://api.paddle.com";
+}
+
+/// The plan a brand-new account starts on: a 14-day trial once billing is live, otherwise
+/// simply active (so nothing changes while billing is not configured).
+function initialPlan(env: Env): { plan: string; validUntil: number | null } {
+  return paddleConfigured(env) ? { plan: "trialing", validUntil: Date.now() + TRIAL_MS } : { plan: "active", validUntil: null };
+}
+
+/// Maps a Paddle subscription status and period to our entitlement.
+function planFromSubscription(subscription: {
+  status?: string;
+  current_billing_period?: { ends_at?: string };
+}): { plan: string; validUntil: number | null } {
+  const ends = subscription.current_billing_period?.ends_at ? Date.parse(subscription.current_billing_period.ends_at) : NaN;
+  const validUntil = Number.isFinite(ends) ? ends : null;
+  switch (subscription.status) {
+    case "active":
+      return { plan: "active", validUntil };
+    case "trialing":
+      return { plan: "trialing", validUntil };
+    case "past_due":
+      return { plan: "past_due", validUntil };
+    case "canceled":
+      return { plan: "canceled", validUntil };
+    default:
+      return { plan: "expired", validUntil: Date.now() };
+  }
+}
+
+/// Verifies Paddle's `Paddle-Signature: ts=…;h1=…` header over `${ts}:${rawBody}`.
+async function verifyPaddleSignature(secret: string, header: string, body: string): Promise<boolean> {
+  const parts: Record<string, string> = {};
+  for (const pair of header.split(";")) {
+    const index = pair.indexOf("=");
+    if (index > 0) parts[pair.slice(0, index).trim()] = pair.slice(index + 1).trim();
+  }
+  const ts = parts.ts;
+  const given = parts.h1;
+  if (!ts || !given) return false;
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // replay window
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = await crypto.subtle.sign("HMAC", key, enc.encode(`${ts}:${body}`));
+  return timingSafeEqual(toHex(digest), given);
+}
+
+/// Applies a billing update to the account, matched by our account id (preferred) carried in
+/// `custom_data`. Never trusts the client for entitlement — only the webhook calls this.
+async function applyBilling(
+  env: Env,
+  accountId: string | undefined,
+  customerId: string | undefined,
+  subscriptionId: string | undefined,
+  plan: { plan: string; validUntil: number | null } | undefined,
+): Promise<void> {
+  if (!accountId) return;
+  await env.DB.prepare(
+    `UPDATE accounts
+        SET plan = COALESCE(?, plan),
+            plan_valid_until = COALESCE(?, plan_valid_until),
+            billing_provider = 'paddle',
+            billing_customer_id = COALESCE(?, billing_customer_id),
+            billing_subscription_id = COALESCE(?, billing_subscription_id)
+      WHERE id = ?`,
+  )
+    .bind(plan?.plan ?? null, plan?.validUntil ?? null, customerId ?? null, subscriptionId ?? null, accountId)
+    .run();
+}
+
+/// Creates a Paddle checkout bound to this account and returns its hosted URL.
+async function createCheckout(env: Env, account: AccountRow): Promise<Response> {
+  if (!paddleConfigured(env)) return json({ error: "billing_unavailable" }, 503);
+  const response = await fetch(`${paddleBase(env)}/transactions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.PADDLE_API_KEY}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      items: [{ price_id: env.PADDLE_PRICE_ID, quantity: 1 }],
+      custom_data: { accountId: account.id },
+      collection_mode: "automatic",
+    }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    data?: { checkout?: { url?: string } };
+  };
+  const url = body.data?.checkout?.url;
+  if (!response.ok || !url) return json({ error: "checkout_failed" }, 502);
+  return json({ url });
+}
+
+/// Cancels at the end of the paid period (access continues until then).
+async function cancelSubscription(env: Env, account: AccountRow): Promise<Response> {
+  if (!paddleConfigured(env)) return json({ error: "billing_unavailable" }, 503);
+  const subscriptionId = account.billing_subscription_id;
+  if (!subscriptionId) return json({ error: "no_subscription" }, 400);
+  const response = await fetch(`${paddleBase(env)}/subscriptions/${subscriptionId}/cancel`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.PADDLE_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({ effective_from: "next_billing_period" }),
+  });
+  if (!response.ok) return json({ error: "cancel_failed" }, 502);
+  return json({ ok: true });
+}
+
+/// Paddle webhook: verify, dedupe, then flip the plan. Never called by the client.
+async function paddleWebhook(env: Env, request: Request): Promise<Response> {
+  if (!env.PADDLE_WEBHOOK_SECRET) return json({ error: "billing_unavailable" }, 503);
+  const raw = await request.text();
+  const signature = request.headers.get("paddle-signature") ?? "";
+  if (!(await verifyPaddleSignature(env.PADDLE_WEBHOOK_SECRET, signature, raw))) {
+    return json({ error: "invalid_signature" }, 401);
+  }
+
+  let event: {
+    event_id?: string;
+    event_type?: string;
+    data?: {
+      id?: string;
+      status?: string;
+      customer_id?: string;
+      subscription_id?: string;
+      action?: string;
+      current_billing_period?: { ends_at?: string };
+      custom_data?: { accountId?: string };
+    };
+  };
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const eventId = event.event_id;
+  if (!eventId) return json({ error: "invalid_event" }, 400);
+
+  // Idempotency: retries of the same event must be a no-op.
+  const recorded = await env.DB.prepare("INSERT OR IGNORE INTO billing_events (id, received_at) VALUES (?, ?)")
+    .bind(eventId, Date.now())
+    .run();
+  if ((recorded.meta.changes ?? 0) === 0) return json({ ok: true, duplicate: true });
+
+  const type = event.event_type ?? "";
+  const data = event.data ?? {};
+
+  if (type.startsWith("subscription.")) {
+    await applyBilling(env, data.custom_data?.accountId, data.customer_id, data.id, planFromSubscription(data));
+  } else if (type === "transaction.completed") {
+    // The subscription events set the plan; this records the customer id meanwhile.
+    await applyBilling(env, data.custom_data?.accountId, data.customer_id, undefined, undefined);
+  } else if ((type === "adjustment.created" || type === "adjustment.updated") && data.subscription_id) {
+    if ((data.action === "refund" || data.action === "chargeback") && data.status === "approved") {
+      await env.DB.prepare("UPDATE accounts SET plan = 'expired', plan_valid_until = ? WHERE billing_subscription_id = ?")
+        .bind(Date.now(), data.subscription_id)
+        .run();
+    }
+  }
+
+  return json({ ok: true });
 }
 
 async function listVaults(env: Env, account: AccountRow): Promise<Response> {
@@ -513,6 +695,7 @@ export default {
       if (path === "/auth/login/start" && method === "POST") return await opaqueLoginStart(env, request);
       if (path === "/auth/login/finish" && method === "POST") return await opaqueLoginFinish(env, request);
       if (path === "/health") return json({ ok: true });
+      if (path === "/billing/webhook" && method === "POST") return await paddleWebhook(env, request);
 
       const account = await authenticate(env, request);
       if (!account) return json({ error: "unauthorized" }, 401);
@@ -531,6 +714,11 @@ export default {
           .run();
         return json({ ok: true });
       }
+
+      // Billing: the client may start a checkout or cancel, but entitlement itself is only ever
+      // changed by the webhook. These stay available when the plan has lapsed, so a user can renew.
+      if (path === "/billing/checkout" && method === "POST") return await createCheckout(env, account);
+      if (path === "/billing/cancel" && method === "POST") return await cancelSubscription(env, account);
 
       // `/me` and every read stay available even when the plan lapsed, so the app can show the
       // status and the user can always download — and delete — their own cloud data.

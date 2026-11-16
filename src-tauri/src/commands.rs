@@ -496,14 +496,16 @@ fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
     crate::sync::opaque_upgrade_finish(base, token, &record)
 }
 
-/// Remembers when the account's master password last changed, so the interface can tell the
-/// user which password to use. Best effort: a network hiccup must never block a sign-in.
+/// Remembers the account's server-side state — when the master password last changed, and the
+/// entitlement — so the interface can show it. Best effort: a network hiccup must never block.
 #[cfg(feature = "sync")]
-fn remember_password_changed_at(state: &AppState, base: &str, token: &str) {
+fn remember_account(state: &AppState, base: &str, token: &str) {
     if let Ok(info) = crate::sync::me(base, token) {
         let _ = state.update_settings(|settings| {
             if let Some(account) = settings.sync_account.as_mut() {
                 account.password_changed_at = info.password_changed_at;
+                account.plan = Some(info.plan);
+                account.plan_valid_until = info.plan_valid_until;
             }
         });
     }
@@ -579,9 +581,11 @@ pub async fn sync_sign_in(
                     email,
                     token: token.clone(),
                     password_changed_at: None,
+                    plan: None,
+                    plan_valid_until: None,
                 });
             })?;
-            remember_password_changed_at(&state, &base, &token);
+            remember_account(&state, &base, &token);
             Ok(state.status())
         })
         .await
@@ -628,9 +632,11 @@ pub async fn sync_register(
                     email,
                     token: token.clone(),
                     password_changed_at: None,
+                    plan: None,
+                    plan_valid_until: None,
                 });
             })?;
-            remember_password_changed_at(&state, &base, &token);
+            remember_account(&state, &base, &token);
             Ok(state.status())
         })
         .await
@@ -1189,6 +1195,8 @@ pub async fn sync_refresh(app: AppHandle) -> Result<AppStatus> {
                     state.update_settings(|settings| {
                         if let Some(account) = settings.sync_account.as_mut() {
                             account.password_changed_at = info.password_changed_at;
+                            account.plan = Some(info.plan);
+                            account.plan_valid_until = info.plan_valid_until;
                         }
                     })?;
                     Ok(state.status())
@@ -1202,6 +1210,53 @@ pub async fn sync_refresh(app: AppHandle) -> Result<AppStatus> {
                 }
                 Err(error) => Err(error),
             }
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Starts a subscription checkout and returns the URL to open. The account is bound server-side
+/// (via the checkout's custom data), so the client can never attach a payment to the wrong one.
+#[tauri::command]
+pub async fn billing_checkout(app: AppHandle) -> Result<String> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to Lados Sync first"))?;
+            crate::sync::billing_checkout(&account.server_url, &account.token)
+        })
+        .await
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let _ = app;
+        Err(Error::invalid("Sync is not available in this build"))
+    }
+}
+
+/// Cancels the subscription at the end of the paid period (access continues until then).
+#[tauri::command]
+pub async fn billing_cancel(app: AppHandle) -> Result<()> {
+    #[cfg(feature = "sync")]
+    {
+        run_blocking(move || {
+            let state = app.state::<AppState>();
+            let account = state
+                .settings()
+                .sync_account
+                .clone()
+                .ok_or_else(|| Error::invalid("Sign in to Lados Sync first"))?;
+            crate::sync::billing_cancel(&account.server_url, &account.token)
         })
         .await
     }

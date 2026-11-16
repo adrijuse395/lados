@@ -25,6 +25,14 @@ export function relativeTime(ms: number): string {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
+const dayFormat = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
+
+/** A calendar day from a Unix-millisecond timestamp, e.g. "12 Sep 2026". */
+export function formatDay(ms: number): string {
+  const date = new Date(ms);
+  return Number.isNaN(date.getTime()) ? "" : dayFormat.format(date);
+}
+
 /** Reads a `YYYY-MM-DD` value as a calendar date in the local time zone. */
 export function parseDate(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);

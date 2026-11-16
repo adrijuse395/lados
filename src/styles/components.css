@@ -287,6 +287,14 @@
   color: var(--success);
 }
 
+.chip-neutral {
+  color: var(--text-muted);
+}
+
+.chip-warning {
+  color: var(--warning);
+}
+
 .sync-actions {
   display: flex;
   flex-wrap: wrap;

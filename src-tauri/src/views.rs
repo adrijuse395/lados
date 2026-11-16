@@ -52,6 +52,11 @@ pub struct SyncView {
     pub last_synced_at: Option<i64>,
     /// When the account master password last changed, in Unix milliseconds.
     pub password_changed_at: Option<i64>,
+    /// Entitlement the server reports: 'comp' | 'trialing' | 'active' | 'past_due' | 'canceled'
+    /// | 'expired'. The server is authoritative; this only renders the interface.
+    pub plan: Option<String>,
+    /// End of the current paid or trial period, in Unix milliseconds.
+    pub plan_valid_until: Option<i64>,
     /// Cloud vaults known to this device, grouped by the vault's own identity.
     pub cloud: Vec<CloudVaultView>,
     /// Vaults on this device that are not synced.
