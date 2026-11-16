@@ -477,6 +477,25 @@ fn label_key_for(state: &AppState, composite: &SecretKey, email: &str) -> Result
     Ok(key)
 }
 
+/// Runs an OPAQUE login. Fails without detail when the account has no OPAQUE record yet, or
+/// when the password is wrong.
+#[cfg(feature = "sync")]
+fn opaque_login(base: &str, email: &str, secret: &[u8]) -> Result<String> {
+    let (state, request) = crate::sync::login_start(secret)?;
+    let (login_id, response) = crate::sync::opaque_login_start(base, email, &request)?;
+    let finish = crate::sync::login_finish(secret, &state, &response)?;
+    crate::sync::opaque_login_finish(base, &login_id, &finish)
+}
+
+/// Attaches an OPAQUE record to an already-authenticated account, so the next sign-in uses OPAQUE.
+#[cfg(feature = "sync")]
+fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
+    let (state, request) = crate::sync::registration_start(secret)?;
+    let response = crate::sync::opaque_upgrade_start(base, token, &request)?;
+    let record = crate::sync::registration_finish(secret, &state, &response)?;
+    crate::sync::opaque_upgrade_finish(base, token, &record)
+}
+
 /// Signs in to (or creates) a sync account from the app start, using the master credentials
 /// of the account (which are those of the vault it syncs).
 #[tauri::command]
@@ -502,7 +521,16 @@ pub async fn sync_sign_in(
             let legacy = crate::sync::legacy_auth_secret(&composite);
             let label = crypto::secret_to_base64(&crypto::label_key(&composite, &email)?);
             let base = crate::sync::DEFAULT_SERVER.to_string();
-            let token = crate::sync::login(&base, &email, &auth, &previous, &legacy)?;
+            // Prefer OPAQUE. If the account predates it, authenticate the old way and then
+            // attach an OPAQUE record, so the next sign-in is OPAQUE too.
+            let token = match opaque_login(&base, &email, auth.as_bytes()) {
+                Ok(token) => token,
+                Err(_) => {
+                    let token = crate::sync::login(&base, &email, &auth, &previous, &legacy)?;
+                    let _ = upgrade_to_opaque(&base, &token, auth.as_bytes());
+                    token
+                }
+            };
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {
@@ -545,7 +573,11 @@ pub async fn sync_register(
             let auth = crate::sync::auth_secret(&composite, &email)?;
             let label = crypto::secret_to_base64(&crypto::label_key(&composite, &email)?);
             let base = crate::sync::DEFAULT_SERVER.to_string();
-            let token = crate::sync::register(&base, &email, &auth)?;
+            // OPAQUE registration: the server never sees a password-equivalent.
+            let (state_b64, request) = crate::sync::registration_start(auth.as_bytes())?;
+            let response = crate::sync::opaque_register_start(&base, &email, &request)?;
+            let record = crate::sync::registration_finish(auth.as_bytes(), &state_b64, &response)?;
+            let token = crate::sync::opaque_register_finish(&base, &email, &record)?;
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(label);
                 settings.sync_account = Some(crate::settings::SyncAccount {

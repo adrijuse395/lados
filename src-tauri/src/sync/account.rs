@@ -163,3 +163,79 @@ pub fn sign_out_everywhere(base: &str, token: &str) -> Result<()> {
         _ => Err(Error::System(format!("could not sign out other devices ({})", response.status))),
     }
 }
+
+fn string_at(response: &Response, key: &str) -> Result<String> {
+    response
+        .value
+        .as_ref()
+        .and_then(|value| value.get(key))
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| Error::System(format!("unexpected auth response ({})", response.status)))
+}
+
+// ----- OPAQUE auth -----
+
+pub fn opaque_register_start(base: &str, email: &str, registration_request: &str) -> Result<String> {
+    let url = format!("{}/auth/register/start", base.trim_end_matches('/'));
+    let body = json!({ "email": email, "registrationRequest": registration_request });
+    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
+    match response.status {
+        200 => string_at(&response, "registrationResponse"),
+        409 => Err(Error::invalid("That email is already registered")),
+        _ => Err(Error::System(format!("register failed ({})", response.status))),
+    }
+}
+
+pub fn opaque_register_finish(base: &str, email: &str, registration_record: &str) -> Result<String> {
+    let url = format!("{}/auth/register/finish", base.trim_end_matches('/'));
+    let body = json!({ "email": email, "registrationRecord": registration_record });
+    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
+    match response.status {
+        200 => token_from(response),
+        409 => Err(Error::invalid("That email is already registered")),
+        _ => Err(Error::System(format!("register failed ({})", response.status))),
+    }
+}
+
+/// Returns `(loginId, loginResponse)`.
+pub fn opaque_login_start(base: &str, email: &str, start_login_request: &str) -> Result<(String, String)> {
+    let url = format!("{}/auth/login/start", base.trim_end_matches('/'));
+    let body = json!({ "email": email, "startLoginRequest": start_login_request });
+    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
+    if response.status != 200 {
+        return Err(Error::System(format!("login failed ({})", response.status)));
+    }
+    Ok((string_at(&response, "loginId")?, string_at(&response, "loginResponse")?))
+}
+
+pub fn opaque_login_finish(base: &str, login_id: &str, finish_login_request: &str) -> Result<String> {
+    let url = format!("{}/auth/login/finish", base.trim_end_matches('/'));
+    let body = json!({ "loginId": login_id, "finishLoginRequest": finish_login_request });
+    let response = http::send(Method::POST, &url, None, None, Some(&body), None)?;
+    match response.status {
+        200 => token_from(response),
+        401 => Err(Error::InvalidCredentials),
+        _ => Err(Error::System(format!("login failed ({})", response.status))),
+    }
+}
+
+pub fn opaque_upgrade_start(base: &str, token: &str, registration_request: &str) -> Result<String> {
+    let url = format!("{}/auth/upgrade/start", base.trim_end_matches('/'));
+    let body = json!({ "registrationRequest": registration_request });
+    let response = http::send(Method::POST, &url, Some(token), None, Some(&body), None)?;
+    if response.status != 200 {
+        return Err(Error::System(format!("upgrade failed ({})", response.status)));
+    }
+    string_at(&response, "registrationResponse")
+}
+
+pub fn opaque_upgrade_finish(base: &str, token: &str, registration_record: &str) -> Result<()> {
+    let url = format!("{}/auth/upgrade/finish", base.trim_end_matches('/'));
+    let body = json!({ "registrationRecord": registration_record });
+    let response = http::send(Method::POST, &url, Some(token), None, Some(&body), None)?;
+    match response.status {
+        200 => Ok(()),
+        _ => Err(Error::System(format!("upgrade failed ({})", response.status))),
+    }
+}

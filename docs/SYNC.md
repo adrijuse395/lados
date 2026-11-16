@@ -67,8 +67,12 @@ From the user's master password (and optional key file — see §9) the client d
 - **Migration:** older accounts are upgraded in place on their next successful login. The
   client also sends the previous derivations (a single-salt Argon2, and the original fast
   hash) so any pre-existing account can authenticate once and be re-keyed.
-- **v1 login:** TLS + verifier. **v1.1 (planned):** upgrade to OPAQUE (RFC 9807) so the
-  server never sees anything password-equivalent.
+- **v1 login:** **OPAQUE** (RFC 9807). The client and server run a PAKE, so the server never
+  sees the password or anything replayable. The client’s OPAQUE input is the Argon2 `authSecret`,
+  which keeps offline guessing Argon2-priced. The server’s OPAQUE module is the same `opaque-ke`
+  crate compiled to WebAssembly (`sync-server/opaque-wasm`), so the two sides interoperate by
+  construction. Accounts created before OPAQUE still authenticate with the schemes above and are
+  **converted on their next sign-in** (`/auth/upgrade/*`).
 - The encryption key derivation stays exactly as it is today (Argon2id + per-file salt
   in the `.lados` header). Sync does not change the file format.
 
@@ -378,9 +382,8 @@ device and never transmitted.
 - **Planned:** OPAQUE login, so the server never sees a password-equivalent.
 
 ### Known limitations / next steps
-1. **OPAQUE login** — removes the password-equivalent from the wire.
-2. **Remaining metadata** — the account email, vault sizes and timestamps are still visible.
-3. **Email verification** — removes enumeration and enables billing.
-4. **Password rotation** — changing the account password must re-key the cloud vaults; not
+1. **Remaining metadata** — the account email, vault sizes and timestamps are still visible.
+2. **Email verification** — removes enumeration and enables billing.
+3. **Password rotation** — changing the account password must re-key the cloud vaults; not
    built yet. (Sessions can already be revoked: “Sign out other devices”.)
 
