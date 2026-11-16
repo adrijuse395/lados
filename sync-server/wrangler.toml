@@ -21,3 +21,7 @@ bucket_name = "lados-sync-blobs"
 
 [vars]
 TOKEN_TTL_SECONDS = "2592000"   # 30 days
+# Paddle billing. The price id is not secret; the two credentials are Worker secrets:
+#   wrangler secret put PADDLE_API_KEY
+#   wrangler secret put PADDLE_WEBHOOK_SECRET
+PADDLE_PRICE_ID = "pri_01m7jfecvdnqknd8231bycpz0c"   # sandbox "Lados Sync" 12/year
