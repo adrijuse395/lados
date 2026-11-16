@@ -493,11 +493,14 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     });
 
   const notice = (() => {
-    if (plan === "expired" || (plan === "past_due" && !stillPaid)) {
-      return "Syncing is paused. You can still download your vaults from the cloud — subscribe to resume uploads.";
-    }
     if (paymentFailed) {
       return "Your last payment didn't go through. Use the link Paddle emailed you to update your card — syncing keeps working until the period ends.";
+    }
+    if (plan === "trialing" && !stillPaid) {
+      return "Your free trial has ended. Subscribe to keep syncing — you can still download your vaults from the cloud.";
+    }
+    if (plan === "expired" || (plan === "past_due" && !stillPaid)) {
+      return "Syncing is paused. You can still download your vaults from the cloud — subscribe to resume uploads.";
     }
     return null;
   })();
@@ -509,6 +512,7 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       case "active":
         return { text: "Active", tone: "success" };
       case "trialing": {
+        if (!stillPaid) return { text: "Trial ended", tone: "warning" };
         const days = planUntil ? Math.max(0, Math.ceil((planUntil - Date.now()) / 86_400_000)) : null;
         return { text: days != null ? `Trial · ${days} day${days === 1 ? "" : "s"} left` : "Trial", tone: "neutral" };
       }

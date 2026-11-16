@@ -323,11 +323,12 @@ async function me(env: Env, account: AccountRow): Promise<Response> {
   });
 }
 
-/// Whether an account may write to the cloud. `comp` and `trialing` are active; `past_due` and
-/// `canceled` stay writable until their paid period ends; everything else is read-only.
+/// Whether an account may write to the cloud. `comp` and `active` have access; `trialing`,
+/// `past_due` and `canceled` only until their period (`plan_valid_until`) has passed. A trial is
+/// therefore time-limited here, with no background job needed to end it.
 function hasActivePlan(account: AccountRow): boolean {
-  if (account.plan === "active" || account.plan === "comp" || account.plan === "trialing") return true;
-  if (account.plan === "past_due" || account.plan === "canceled") {
+  if (account.plan === "comp" || account.plan === "active") return true;
+  if (account.plan === "trialing" || account.plan === "past_due" || account.plan === "canceled") {
     return account.plan_valid_until != null && account.plan_valid_until > Date.now();
   }
   return false;
