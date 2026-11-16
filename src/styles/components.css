@@ -297,7 +297,7 @@
 .sync-map-head,
 .sync-map-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 60px minmax(0, 1fr);
   align-items: center;
 }
 
@@ -337,8 +337,15 @@
   background: var(--surface-sunken);
 }
 
+/* The device side stacks: the vault file name(s) get a full line, the actions sit under them,
+   so a long name is never squeezed by the buttons. */
+.sync-node-device {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .sync-node-device.empty {
-  justify-content: space-between;
   border-style: dashed;
   background: transparent;
 }
@@ -381,8 +388,8 @@
 
 .sync-node-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  flex: none;
 }
 
 .sync-device-copy {
