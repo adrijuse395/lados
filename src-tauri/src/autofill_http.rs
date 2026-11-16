@@ -87,24 +87,30 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
     let path = parts.next().unwrap_or("/");
 
     if method != "GET" && method != "OPTIONS" {
-        respond(&mut stream, 405, r#"{"error":"method not allowed"}"#);
+        respond(&mut stream, 405, r#"{"error":"method not allowed"}"#, None);
         return;
     }
 
-    // Defence in depth: a web page carries its own http(s) origin, which we refuse.
-    // A browser extension's Origin is `moz-extension://…` / `chrome-extension://…`.
-    // The extension does not rely on CORS at all (it has host permissions), and we
-    // never send `Access-Control-Allow-Origin`, so web pages cannot read responses.
-    if let Some(origin) = header_value(&request, "origin") {
-        let origin = origin.to_ascii_lowercase();
-        if origin.starts_with("http://") || origin.starts_with("https://") {
-            respond(&mut stream, 403, r#"{"error":"forbidden"}"#);
-            return;
+    // Defence in depth: a web page carries its own http(s) origin, which we refuse. A browser
+    // extension's origin is `moz-extension://…` / `chrome-extension://…`; for those we echo the
+    // CORS headers (and allow the private-network preflight) so the extension can reach us even
+    // under Private Network Access rules. We never send a wildcard, so web pages cannot read
+    // these responses either way.
+    let allow_origin = match header_value(&request, "origin") {
+        Some(origin) => {
+            let lower = origin.to_ascii_lowercase();
+            if lower.starts_with("http://") || lower.starts_with("https://") {
+                respond(&mut stream, 403, r#"{"error":"forbidden"}"#, None);
+                return;
+            }
+            Some(origin)
         }
-    }
+        None => None,
+    };
+    let cors = allow_origin.as_deref();
 
     if method == "OPTIONS" {
-        respond(&mut stream, 204, "");
+        respond(&mut stream, 204, "", cors);
         return;
     }
 
@@ -117,23 +123,23 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
                 bridge: "lados-autofill",
             })
             .unwrap_or_else(|_| r#"{"state":"unknown"}"#.into());
-            respond(&mut stream, 200, &body);
+            respond(&mut stream, 200, &body, cors);
         }
         "/v1/entries" => {
             let page_url = query_param(query, "url").unwrap_or_default();
             match entries_for(&app, &page_url) {
-                Ok(body) => respond(&mut stream, 200, &body),
-                Err(code) => respond(&mut stream, code, r#"{"error":"unavailable"}"#),
+                Ok(body) => respond(&mut stream, 200, &body, cors),
+                Err(code) => respond(&mut stream, code, r#"{"error":"unavailable"}"#, cors),
             }
         }
         "/v1/reveal" => {
             let id = query_param(query, "id").unwrap_or_default();
             match reveal_for(&app, &id) {
-                Ok(body) => respond(&mut stream, 200, &body),
-                Err(code) => respond(&mut stream, code, r#"{"error":"unavailable"}"#),
+                Ok(body) => respond(&mut stream, 200, &body, cors),
+                Err(code) => respond(&mut stream, code, r#"{"error":"unavailable"}"#, cors),
             }
         }
-        _ => respond(&mut stream, 404, r#"{"error":"not found"}"#),
+        _ => respond(&mut stream, 404, r#"{"error":"not found"}"#, cors),
     }
 }
 
@@ -251,7 +257,7 @@ fn percent_decode(input: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn respond(stream: &mut TcpStream, status: u16, body: &str) {
+fn respond(stream: &mut TcpStream, status: u16, body: &str, allow_origin: Option<&str>) {
     let reason = match status {
         200 => "OK",
         204 => "No Content",
@@ -262,17 +268,26 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str) {
         503 => "Service Unavailable",
         _ => "Error",
     };
-    // No `Access-Control-Allow-Origin`: web pages cannot read these responses.
-    // The browser extension reaches the bridge through its host permission instead.
-    let header = format!(
+    let mut header = format!(
         "HTTP/1.1 {status} {reason}\r\n\
          Content-Type: application/json; charset=utf-8\r\n\
          Content-Length: {}\r\n\
          Cache-Control: no-store\r\n\
-         Connection: close\r\n\
-         \r\n",
+         Connection: close\r\n",
         body.len()
     );
+    // Echo only the calling extension's own origin (never a wildcard, never a web page's), plus
+    // the Private Network Access grant that some browsers require for loopback requests.
+    if let Some(origin) = allow_origin {
+        header.push_str(&format!(
+            "Access-Control-Allow-Origin: {origin}\r\n\
+             Access-Control-Allow-Methods: GET, OPTIONS\r\n\
+             Access-Control-Allow-Headers: *\r\n\
+             Access-Control-Allow-Private-Network: true\r\n\
+             Vary: Origin\r\n"
+        ));
+    }
+    header.push_str("\r\n");
     let _ = stream.write_all(header.as_bytes());
     if !body.is_empty() {
         let _ = stream.write_all(body.as_bytes());

@@ -82,6 +82,10 @@ function firefoxSteps(installed: boolean): Child[] {
         { class: "browser-choices" },
         actionButton("Add to Firefox", () => void openExtensionStore("firefox"), true),
       ),
+      h("p", {
+        class: "field-hint",
+        text: "On the page that opens, click “Add to Firefox” and confirm. There is no file to download.",
+      }),
     ];
   }
   return [
