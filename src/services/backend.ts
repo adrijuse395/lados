@@ -3,6 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AppStatus,
+  BrowserPresence,
   CloudVault,
   EntryContent,
   EntryDetails,
@@ -55,6 +56,7 @@ export function isCredentialError(error: unknown): boolean {
 export const backend = {
   // Application
   getStatus: () => call<AppStatus>("get_status"),
+  detectedBrowsers: () => call<BrowserPresence>("detected_browsers"),
   updatePreferences: (preferences: Preferences) => call<AppStatus>("update_preferences", { preferences }),
   forgetRecentVault: (path: string) => call<AppStatus>("forget_recent_vault", { path }),
   removeListedVault: (path: string) => call<AppStatus>("remove_listed_vault", { path }),

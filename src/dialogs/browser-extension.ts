@@ -1,8 +1,9 @@
 // Guided install for the Lados browser extension (desktop only).
 // Shown once after the vault is unlocked; also reachable from Settings.
 import { backend } from "../services/backend";
+import type { BrowserPresence } from "../types";
+import { h, type Child } from "../ui/dom";
 import { showDialog } from "../ui/modal";
-import { h } from "../ui/dom";
 import { toast } from "../ui/toast";
 
 type BrowserId = "firefox" | "chrome" | "edge";
@@ -15,6 +16,13 @@ const STORES: Record<BrowserId, { label: string; url: string | null }> = {
   firefox: { label: "Firefox", url: "https://addons.mozilla.org/en-US/firefox/addon/lados/" },
   chrome: { label: "Chrome", url: null },
   edge: { label: "Edge", url: null },
+};
+
+/** Where to get the browser itself, for when it is not installed yet. */
+const BROWSER_DOWNLOADS: Record<BrowserId, string> = {
+  firefox: "https://www.mozilla.org/firefox/new/",
+  chrome: "https://www.google.com/chrome/",
+  edge: "https://www.microsoft.com/edge",
 };
 
 const DISMISSED_KEY = "lados-browser-extension-dismissed";
@@ -35,68 +43,80 @@ export function markExtensionDismissed(): void {
   }
 }
 
-/**
- * Opens the add-on page in the user's default browser. A webview cannot open
- * external URLs itself, so this goes through the Rust opener command.
- */
-async function openStore(id: BrowserId): Promise<void> {
+/** Opens an external page through the Rust opener (a webview cannot open URLs itself). */
+async function openUrl(url: string, what: string): Promise<void> {
+  try {
+    await backend.openExternalUrl(url);
+    toast(`Opening ${what} in your browser.`, "info");
+  } catch {
+    toast(`Could not open your browser. Visit ${url}`, "error");
+  }
+}
+
+/** Opens a browser's published store page, or says that it is not published yet. */
+export async function openExtensionStore(id: BrowserId = "firefox"): Promise<void> {
   const store = STORES[id];
   if (!store.url) {
     toast(`The ${store.label} version isn’t published yet.`, "info");
     return;
   }
-  try {
-    await backend.openExternalUrl(store.url);
-    toast(`Opening the ${store.label} add-on page in your browser.`, "info");
-  } catch {
-    toast("Could not open your browser. Visit addons.mozilla.org and search for “Lados”.", "error");
+  await openUrl(store.url, `the ${store.label} add-on page`);
+}
+
+/** Opens a browser's download page, for when it is not installed yet. */
+export async function openBrowserDownload(id: BrowserId = "firefox"): Promise<void> {
+  await openUrl(BROWSER_DOWNLOADS[id], `the ${STORES[id].label} download page`);
+}
+
+function actionButton(label: string, action: () => void, primary = false): HTMLElement {
+  return h("button", { type: "button", class: ["button", primary ? "primary" : ""], onClick: action }, label);
+}
+
+/** The steps for Firefox, depending on whether it is already installed. */
+function firefoxSteps(installed: boolean): Child[] {
+  if (installed) {
+    return [
+      h("p", { class: "muted", text: "Firefox is ready. Add the Lados extension:" }),
+      h(
+        "div",
+        { class: "browser-choices" },
+        actionButton("Add to Firefox", () => void openExtensionStore("firefox"), true),
+      ),
+    ];
   }
-}
-
-function browserButton(id: BrowserId): HTMLElement {
-  const store = STORES[id];
-  const available = store.url !== null;
-  return h(
-    "button",
-    {
-      type: "button",
-      class: ["button", available ? "primary" : ""],
-      disabled: available ? undefined : true,
-      title: available ? "" : "Not published yet",
-      onClick: () => void openStore(id),
-    },
-    store.label,
-  );
-}
-
-/** Opens a browser's published store page in the user's default browser. */
-export async function openExtensionStore(id: BrowserId = "firefox"): Promise<void> {
-  await openStore(id);
+  return [
+    h("p", { class: "muted", text: "You need Firefox first — it’s free:" }),
+    h(
+      "div",
+      { class: "browser-choices" },
+      actionButton("1. Download Firefox", () => void openBrowserDownload("firefox"), true),
+      actionButton("2. Add the Lados extension", () => void openExtensionStore("firefox")),
+    ),
+    h("p", {
+      class: "field-hint",
+      text: "Install Firefox, then click the second button to add the extension.",
+    }),
+  ];
 }
 
 /** The install dialog, shared by the first-run prompt and the Settings button. */
 export async function extensionInstallDialog(): Promise<void> {
+  const browsers: BrowserPresence = await backend
+    .detectedBrowsers()
+    .catch(() => ({ firefox: false, chrome: false, edge: false }));
+
   await showDialog<"done">({
-    title: "Fill passwords in your browser",
+    title: "Autofill in your browser",
     size: "medium",
     body: h(
       "div",
       { class: "stack", style: "gap: 14px" },
-      h("p", {}, "Install the Lados extension to autofill logins from your vault. Choose your browser:"),
-      h("div", { class: "browser-choices" }, [browserButton("firefox"), browserButton("chrome"), browserButton("edge")]),
-      h(
-        "div",
-        { class: "install-steps" },
-        h("strong", {}, "Then:"),
-        h("ol", {}, [
-          h("li", {}, "Your browser opens the add-on page — click “Add to Firefox / Chrome / Edge”."),
-          h("li", {}, "Return to Lados. Passwords will fill on sites where you have an entry."),
-        ]),
-      ),
+      h("p", {}, "The Lados extension fills logins from your vault. It works offline, with no account."),
+      ...firefoxSteps(browsers.firefox),
       h(
         "p",
         { class: "muted" },
-        "No cloud, no account — the extension talks only to Lados on this computer.",
+        "The extension talks only to Lados on this computer. Chrome and Edge versions are coming soon.",
       ),
     ),
     submitLabel: "Close",

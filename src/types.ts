@@ -8,6 +8,13 @@ export type Theme = "system" | "light" | "dark";
 export type LockReason = "user" | "inactivity" | "tray";
 export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image";
 
+/** Which browsers are installed on this machine (drives the extension install flow). */
+export interface BrowserPresence {
+  firefox: boolean;
+  chrome: boolean;
+  edge: boolean;
+}
+
 export type ErrorKind =
   | "invalidCredentials"
   | "sessionExpired"

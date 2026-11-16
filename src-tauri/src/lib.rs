@@ -10,6 +10,7 @@
 #[cfg(desktop)]
 mod autofill_http;
 mod background;
+mod browsers;
 mod clipboard;
 mod commands;
 mod crypto;
@@ -113,6 +114,7 @@ pub fn run() {
             let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
+            browsers::detected_browsers,
             commands::get_status,
             commands::update_preferences,
             commands::forget_recent_vault,
