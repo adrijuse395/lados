@@ -1,0 +1,17 @@
+{
+  "name": "lados-opaque",
+  "type": "module",
+  "description": "OPAQUE server, compiled to WebAssembly for the Lados Sync worker.",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "files": [
+    "lados_opaque_bg.wasm",
+    "lados_opaque.js",
+    "lados_opaque.d.ts"
+  ],
+  "main": "lados_opaque.js",
+  "types": "lados_opaque.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

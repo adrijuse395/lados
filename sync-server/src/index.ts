@@ -6,11 +6,19 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import init, { create_registration_response, finish_login, start_login } from "../opaque-wasm/pkg/lados_opaque.js";
+import wasmModule from "../opaque-wasm/pkg/lados_opaque_bg.wasm";
+
 export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   TOKEN_TTL_SECONDS: string;
+  /** OPAQUE server setup (OPRF seed + key pair). A secret; its leak enables offline guessing. */
+  OPAQUE_SERVER_SETUP: string;
 }
+
+// The OPAQUE WASM is imported as a module (compiled at deploy time) and instantiated once.
+await init({ module_or_path: wasmModule });
 
 const enc = new TextEncoder();
 
@@ -60,6 +68,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 
 interface AccountRow {
   id: string;
+  email: string;
   plan: string;
 }
 
@@ -82,7 +91,7 @@ async function authenticate(env: Env, request: Request): Promise<AccountRow | nu
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.plan AS plan
+    `SELECT a.id AS id, a.email AS email, a.plan AS plan
        FROM sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
@@ -202,6 +211,117 @@ async function login(env: Env, request: Request): Promise<Response> {
 
   const token = await startSession(env, row.id);
   return json({ token, plan: row.plan });
+}
+
+// ----- OPAQUE auth (the server never sees a password-equivalent) -----
+
+/// How long an in-flight login may take before its state is discarded.
+const LOGIN_TTL_MS = 2 * 60 * 1000;
+
+/// Registration, step 1: the server's OPRF response to the client's request.
+async function opaqueRegisterStart(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ email?: string; registrationRequest?: string }>(request);
+  const email = body?.email?.trim().toLowerCase();
+  if (!email || !email.includes("@") || !body?.registrationRequest) {
+    return json({ error: "invalid_request" }, 400);
+  }
+  if (!(await allow(env, `reg:ip:${clientIp(request)}`, 30, 900))) return json({ error: "rate_limited" }, 429);
+
+  const existing = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?").bind(email).first();
+  if (existing) return json({ error: "email_taken" }, 409);
+
+  const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, email, body.registrationRequest);
+  return json({ registrationResponse });
+}
+
+/// Registration, step 2: store the registration record and start a session.
+async function opaqueRegisterFinish(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ email?: string; registrationRecord?: string }>(request);
+  const email = body?.email?.trim().toLowerCase();
+  if (!email || !email.includes("@") || !body?.registrationRecord) {
+    return json({ error: "invalid_request" }, 400);
+  }
+  const existing = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?").bind(email).first();
+  if (existing) return json({ error: "email_taken" }, 409);
+
+  const id = crypto.randomUUID();
+  await env.DB.prepare(
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, created_at) VALUES (?, ?, '', '', 'opaque', ?, 'active', ?)",
+  )
+    .bind(id, email, body.registrationRecord, Date.now())
+    .run();
+  const token = await startSession(env, id);
+  return json({ token, plan: "active" });
+}
+
+/// Login, step 1: the server response plus a short-lived id holding its handshake state.
+async function opaqueLoginStart(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ email?: string; startLoginRequest?: string }>(request);
+  const email = body?.email?.trim().toLowerCase();
+  if (!email || !body?.startLoginRequest) return json({ error: "invalid_request" }, 400);
+  if (!(await allow(env, `login:ip:${clientIp(request)}`, 100, 900))) return json({ error: "rate_limited" }, 429);
+  if (!(await allow(env, `login:email:${email}`, 20, 900))) return json({ error: "rate_limited" }, 429);
+
+  const account = await env.DB.prepare("SELECT id, opaque_record FROM accounts WHERE email = ?")
+    .bind(email)
+    .first<{ id: string; opaque_record: string | null }>();
+
+  // No record -> a dummy response, so we do not reveal whether the email is registered.
+  const seed = crypto.getRandomValues(new Uint8Array(32));
+  const result = JSON.parse(
+    start_login(env.OPAQUE_SERVER_SETUP, account?.opaque_record ?? null, body.startLoginRequest, email, seed),
+  ) as { serverLoginState: string; loginResponse: string };
+
+  const loginId = randomHex(16);
+  await env.DB.prepare("INSERT INTO logins (id, account_id, server_state, expires_at) VALUES (?, ?, ?, ?)")
+    .bind(loginId, account?.id ?? null, result.serverLoginState, Date.now() + LOGIN_TTL_MS)
+    .run();
+  if (Math.random() < 0.02) {
+    await env.DB.prepare("DELETE FROM logins WHERE expires_at <= ?").bind(Date.now()).run();
+  }
+  return json({ loginId, loginResponse: result.loginResponse });
+}
+
+/// Login, step 2: verify the handshake and, on success, start a session.
+async function opaqueLoginFinish(env: Env, request: Request): Promise<Response> {
+  const body = await readJson<{ loginId?: string; finishLoginRequest?: string }>(request);
+  if (!body?.loginId || !body?.finishLoginRequest) return json({ error: "invalid_request" }, 400);
+
+  const row = await env.DB.prepare("SELECT account_id, server_state, expires_at FROM logins WHERE id = ?")
+    .bind(body.loginId)
+    .first<{ account_id: string | null; server_state: string; expires_at: number }>();
+  if (!row || row.expires_at <= Date.now()) return json({ error: "invalid_credentials" }, 401);
+  await env.DB.prepare("DELETE FROM logins WHERE id = ?").bind(body.loginId).run();
+
+  try {
+    finish_login(row.server_state, body.finishLoginRequest);
+  } catch {
+    return json({ error: "invalid_credentials" }, 401);
+  }
+  if (!row.account_id) return json({ error: "invalid_credentials" }, 401);
+
+  const account = await env.DB.prepare("SELECT plan FROM accounts WHERE id = ?")
+    .bind(row.account_id)
+    .first<{ plan: string }>();
+  const token = await startSession(env, row.account_id);
+  return json({ token, plan: account?.plan ?? "active" });
+}
+
+/// Conversion: attach an OPAQUE record to an already-authenticated (legacy) account.
+async function opaqueUpgradeStart(env: Env, account: AccountRow, request: Request): Promise<Response> {
+  const body = await readJson<{ registrationRequest?: string }>(request);
+  if (!body?.registrationRequest) return json({ error: "invalid_request" }, 400);
+  const registrationResponse = create_registration_response(env.OPAQUE_SERVER_SETUP, account.email, body.registrationRequest);
+  return json({ registrationResponse });
+}
+
+async function opaqueUpgradeFinish(env: Env, account: AccountRow, request: Request): Promise<Response> {
+  const body = await readJson<{ registrationRecord?: string }>(request);
+  if (!body?.registrationRecord) return json({ error: "invalid_request" }, 400);
+  await env.DB.prepare("UPDATE accounts SET opaque_record = ?, scheme = 'opaque' WHERE id = ?")
+    .bind(body.registrationRecord, account.id)
+    .run();
+  return json({ ok: true });
 }
 
 async function me(env: Env, account: AccountRow): Promise<Response> {
@@ -350,10 +470,17 @@ export default {
     try {
       if (path === "/auth/register" && method === "POST") return await register(env, request);
       if (path === "/auth/login" && method === "POST") return await login(env, request);
+      if (path === "/auth/register/start" && method === "POST") return await opaqueRegisterStart(env, request);
+      if (path === "/auth/register/finish" && method === "POST") return await opaqueRegisterFinish(env, request);
+      if (path === "/auth/login/start" && method === "POST") return await opaqueLoginStart(env, request);
+      if (path === "/auth/login/finish" && method === "POST") return await opaqueLoginFinish(env, request);
       if (path === "/health") return json({ ok: true });
 
       const account = await authenticate(env, request);
       if (!account) return json({ error: "unauthorized" }, 401);
+
+      if (path === "/auth/upgrade/start" && method === "POST") return await opaqueUpgradeStart(env, account, request);
+      if (path === "/auth/upgrade/finish" && method === "POST") return await opaqueUpgradeFinish(env, account, request);
 
       if (path === "/account" && method === "DELETE") return await deleteAccount(env, account);
 

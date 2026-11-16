@@ -9,11 +9,14 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute lados-sync --file=./schema.sql --remote",
+    "build:opaque": "wasm-pack build opaque-wasm --target web",
     "smoke": "node scripts/smoke.mjs",
+    "smoke:opaque": "node scripts/opaque-e2e.mjs",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
+    "@serenity-kit/opaque": "^1.1.0",
     "typescript": "^5.6.3",
     "wrangler": "^3.90.0"
   }

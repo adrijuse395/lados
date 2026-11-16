@@ -4,13 +4,22 @@
 -- Apply with:  wrangler d1 execute lados-sync --file=./schema.sql --remote
 
 CREATE TABLE IF NOT EXISTS accounts (
-  id          TEXT PRIMARY KEY,
-  email       TEXT NOT NULL UNIQUE,
-  salt        TEXT NOT NULL,
-  verifier    TEXT NOT NULL,
-  scheme      TEXT NOT NULL DEFAULT 'legacy',  -- legacy | argon2
-  plan        TEXT NOT NULL DEFAULT 'active',  -- active | expired
-  created_at  INTEGER NOT NULL
+  id            TEXT PRIMARY KEY,
+  email         TEXT NOT NULL UNIQUE,
+  salt          TEXT NOT NULL,
+  verifier      TEXT NOT NULL,
+  scheme        TEXT NOT NULL DEFAULT 'legacy',  -- legacy | argon2 | argon2v2 | opaque
+  opaque_record TEXT,                            -- OPAQUE registration record
+  plan          TEXT NOT NULL DEFAULT 'active',  -- active | expired
+  created_at    INTEGER NOT NULL
+);
+
+-- In-flight OPAQUE logins (short-lived handshake state).
+CREATE TABLE IF NOT EXISTS logins (
+  id           TEXT PRIMARY KEY,
+  account_id   TEXT,
+  server_state TEXT NOT NULL,
+  expires_at   INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS sessions (

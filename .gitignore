@@ -59,3 +59,4 @@ src-tauri/gen/android/**/jniLibs/
 src-tauri/gen/android/.gradle/
 src-tauri/gen/android/.kotlin/
 src-tauri/gen/android/local.properties
+sync-server/opaque-wasm/target/
