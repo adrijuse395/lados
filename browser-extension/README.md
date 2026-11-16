@@ -56,18 +56,24 @@ Produces (under `browser-extension/build/`, git-ignored):
 
 ## Publishing
 
-**Firefox Add-ons (AMO)** — free:
+**Firefox Add-ons (AMO)** — free, **published** ✅
+- Live listing: <https://addons.mozilla.org/firefox/addon/lados/> (v0.3.0, reviewed 2026‑11‑13)
+- Extension ID: `lados@adrijuse395.github.io`
 1. Bump `version`, run `python3 scripts/build-extension.py`.
 2. Upload `build/lados-firefox.zip` at <https://addons.mozilla.org/en-US/developers/>.
 3. Distribution: **On this site**.
 
-**Chrome Web Store** — one-time $5 developer fee:
-1. Upload `build/lados-chrome.zip` at <https://chrome.google.com/webstore/devconsole>.
-2. Fill the listing (Privacy: no data collected).
+**Chrome Web Store** — one‑time $5 developer fee:
+1. Upload `browser-extension/build/lados-chrome.zip` at <https://chrome.google.com/webstore/devconsole>.
+2. Fill the listing from [`STORE-LISTING.md`](./STORE-LISTING.md) (copy‑paste fields + checklist).
+3. Privacy: **no data collected**.
 
-**Edge Add-ons** — free, same `lados-chrome.zip`: <https://partner.microsoft.com/dashboard/microsoftedge>
+**Edge Add-ons** — free, same `lados-chrome.zip`:
+1. Upload at <https://partner.microsoft.com/dashboard/microsoftedge>.
+2. Reuse the same listing copy from [`STORE-LISTING.md`](./STORE-LISTING.md).
 
-After approval, set the resulting URLs in `src/dialogs/browser-extension.ts`.
+The store pages for Firefox, Chrome and Edge are wired in `src/dialogs/browser-extension.ts`;
+set each URL there once the add-on is published.
 
 ## Notes
 
