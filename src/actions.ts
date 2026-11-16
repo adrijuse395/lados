@@ -10,7 +10,7 @@ import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
-import { openSyncCenter } from "./dialogs/sync-center";
+import { openChangeMasterPassword, openSyncCenter } from "./dialogs/sync-center";
 import { openUrlMatchTester } from "./dialogs/url-match";
 import { backend, isCredentialError } from "./services/backend";
 import {
@@ -70,6 +70,12 @@ export const renameVault = () =>
 
 export const changeMasterKey = () =>
   attempt(async () => {
+    // A sync user has one master password (the account's). Re-keying a single vault here would
+    // break that, so the account-wide change is the only option for them.
+    if (store.status?.sync.loggedIn) {
+      toast("You're signed in to Lados Sync — use “Change master password” so every synced vault stays in step.", "info", 7000);
+      return;
+    }
     const status = await credentialsDialog({
       title: "Change the master key",
       message: h(
@@ -91,6 +97,14 @@ export const changeMasterKey = () =>
     if (!status) return;
     await showStatus(status);
     toast("The master key was changed", "success");
+  });
+
+/** Signed-in users change the account master password, which re-encrypts every synced vault. */
+export const changeMasterPassword = () =>
+  attempt(async () => {
+    const status = await openChangeMasterPassword();
+    if (!status) return;
+    await refreshStatus();
   });
 
 // ----- Entries -----

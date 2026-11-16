@@ -36,6 +36,9 @@ export function isVaultMounted(): boolean {
 }
 
 function openMoreMenu(anchor: HTMLElement): void {
+  // A sync user has one master password (their account's): offer the account-wide change
+  // instead of re-keying this single vault, which would break the link to the account.
+  const signedIn = store.status?.sync.loggedIn ?? false;
   openMenu(anchor, [
     { label: "Import from CSV…", icon: "import", onSelect: () => void actions.importCsv() },
     { label: "Import from KeePass…", icon: "import", onSelect: () => void actions.importKdbx() },
@@ -45,7 +48,9 @@ function openMoreMenu(anchor: HTMLElement): void {
     { label: "Merge another vault…", icon: "merge", onSelect: () => void actions.mergeVault() },
     "separator",
     { label: "Rename vault…", icon: "edit", onSelect: () => void actions.renameVault() },
-    { label: "Change master key…", icon: "key", onSelect: () => void actions.changeMasterKey() },
+    signedIn
+      ? { label: "Change master password…", icon: "key", onSelect: () => void actions.changeMasterPassword() }
+      : { label: "Change master key…", icon: "key", onSelect: () => void actions.changeMasterKey() },
     { label: "Settings…", icon: "settings", onSelect: () => void actions.showSettings() },
     { label: "Sync settings…", icon: "cloud", onSelect: () => void actions.showSyncCenter() },
     { label: "Find for URL…", icon: "search", onSelect: () => void actions.showUrlMatchTester() },

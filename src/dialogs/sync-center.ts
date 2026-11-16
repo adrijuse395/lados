@@ -41,8 +41,9 @@ interface PasswordChangeProgress {
   label: string;
 }
 
-/** The blocking, guided change of the one master password: the account and every synced vault. */
-async function changeMasterPassword(refresh: () => void): Promise<void> {
+/** The blocking, guided change of the one master password: the account and every synced vault.
+ *  Exported so the vault menu can offer it too; the caller re-renders as it needs. */
+export async function openChangeMasterPassword(): Promise<AppStatus | null> {
   const current = passwordInput({ autofocus: true, placeholder: "Current master password" });
   const currentKeyFile = keyFileField({});
   const next = passwordInput({ strength: true, placeholder: "Choose a strong password" });
@@ -123,10 +124,10 @@ async function changeMasterPassword(refresh: () => void): Promise<void> {
     },
   });
 
-  if (!result) return;
+  if (!result) return null;
   store.status = result;
   toast("Master password changed", "success");
-  refresh();
+  return result;
 }
 
 /** Opens the sync space: the sign-in form when signed out, the management view otherwise. */
@@ -334,11 +335,20 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
 
   const syncNowOpen = () =>
     run(async () => {
-      const report = await performSync();
-      toast(
-        hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date",
-        hasChanges(report) ? "success" : "info",
-      );
+      try {
+        const report = await performSync();
+        toast(
+          hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date",
+          hasChanges(report) ? "success" : "info",
+        );
+      } catch (error) {
+        // The vault was re-keyed on its own and no longer matches the account: offer to fix it.
+        if (isDifferentMaster(error) && openPath) {
+          await syncCopy(openPath, "Sync now");
+          return;
+        }
+        throw error;
+      }
     });
 
   // The sync map: one row per cloud vault, linking the cloud node to this device.
@@ -465,7 +475,15 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       "div",
       { class: "sync-actions" },
       h("button", { type: "button", class: "button small", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
-      h("button", { type: "button", class: "button small", onClick: () => void changeMasterPassword(refresh) }, "Change master password"),
+      h(
+        "button",
+        {
+          type: "button",
+          class: "button small",
+          onClick: () => void openChangeMasterPassword().then((status) => { if (status) refresh(); }),
+        },
+        "Change master password",
+      ),
       h("button", { type: "button", class: "button small", onClick: () => void signOutOtherDevices() }, "Sign out other devices"),
       h("button", { type: "button", class: "button small", onClick: () => void signOut(refresh) }, "Sign out"),
       h("button", { type: "button", class: "button small danger", onClick: () => void removeAccount(refresh) }, "Delete account"),

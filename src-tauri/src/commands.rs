@@ -940,7 +940,7 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 .path()
                 .map(Path::to_path_buf)
                 .ok_or(Error::NoVaultSelected)?;
-            let (base, token, server_vault_id, local_id, last_version) = {
+            let (base, email, token, server_vault_id, local_id, last_version) = {
                 let settings = state.settings();
                 let account = settings
                     .sync_account
@@ -952,6 +952,7 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                     .ok_or_else(|| Error::invalid("This vault is not set up for sync"))?;
                 (
                     account.server_url,
+                    account.email,
                     account.token,
                     synced.server_vault_id,
                     synced.local_vault_id,
@@ -963,7 +964,22 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 return Err(Error::invalid("This vault is not the one set up for sync"));
             }
             let remote = crate::sync::HttpRemote::new(&base, &token);
-            let (report, version) = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, last_version))?;
+            let outcome = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, last_version));
+            let (report, version) = match outcome {
+                Ok(value) => value,
+                Err(error) => {
+                    // The cloud copy could not be read with this vault's key. If the vault's
+                    // master password is not the account's (for example, it was re-keyed on its
+                    // own), say so, so the interface can offer to re-key the vault back.
+                    if matches!(error, Error::InvalidCredentials | Error::Corrupted) {
+                        let composite = state.with_vault(|open| Ok(open.composite()))?;
+                        if !is_the_account_password(&base, &email, &composite) {
+                            return Err(wrong_master_password());
+                        }
+                    }
+                    return Err(error);
+                }
+            };
             let open_name = state.with_vault(|open| Ok(open.vault().name.clone()))?;
             state.update_settings(|settings| {
                 if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
@@ -1535,13 +1551,23 @@ pub async fn generate_key_file(app: AppHandle, window: WebviewWindow) -> Result<
 
 #[tauri::command]
 pub async fn change_master_key(app: AppHandle, password: String, key_file: Option<String>) -> Result<AppStatus> {
+    // A signed-in sync user has one master password — the account's — and every synced vault
+    // must share it. Re-keying a single vault here would break that link, so it is refused; the
+    // account-wide change lives in the Sync settings.
+    let state = app.state::<AppState>();
+    if state.settings().sync_account.is_some() {
+        return Err(Error::invalid(
+            "You're signed in to Lados Sync, where your master password is your account password. \
+             Change it from Sync settings so every synced vault stays in step.",
+        ));
+    }
+
     let password = Zeroizing::new(password);
     require_password(&password)?;
     let composite = composite_key(&password, key_file.as_deref())?;
     let for_key = composite.clone();
     let key = run_blocking(move || VaultKey::generate(&for_key, KdfParams::calibrated())).await?;
 
-    let state = app.state::<AppState>();
     state.touch();
     let (previous_path, path, outcome) = state.with_vault_mut(|open| {
         let previous_path = open.path().to_path_buf();
