@@ -1,6 +1,6 @@
 # Lados — Privacy Policy
 
-_Last updated: 16 November 2026_
+_Last updated: 17 November 2026_
 
 > This is the source of truth. The same policy is published for the stores at
 > `https://<your-domain>/privacy` (the `lados-web` site, `privacy.html`). Keep both in step.
@@ -44,11 +44,29 @@ devices. Because the encryption key never leaves your device, the server stores 
 opaque ciphertext it cannot read. Vault contents, vault names and entry data are never
 available to us. The protocol is documented in [`SYNC.md`](./SYNC.md).
 
+## Payments (Lados Sync subscriptions)
+
+Lados Sync is sold by **Paddle**, which acts as the *Merchant of Record*: Paddle is the
+seller of record for your subscription and handles the payment, the invoice and any VAT or
+sales tax. **We never see or store your card details.**
+
+- **What Paddle processes**, under its own privacy policy (linked from the checkout, and at
+  <https://www.paddle.com/legal/privacy>): your email, your payment details, and the billing
+  information tax law requires.
+- **What we receive and store** is limited to identifiers and state: your account id, Paddle's
+  customer and subscription ids, the plan, and the period end. No card data, no address, no tax
+  identifier.
+- If you never subscribe, none of this exists.
+
+You can stop at any time: cancelling keeps your access until the period you already paid for
+ends, and deleting your account cancels the subscription first.
+
 ## What we collect
 
 **Nothing.** There is no analytics, no crash reporting, and no data broker sharing. We do
 not sell or share personal data. For Lados Sync we store only the email you signed up with
-and the encrypted blobs described above.
+and the encrypted blobs described above; if you subscribe, we additionally store the
+payment-processor identifiers listed under *Payments* (never card data).
 
 ## Changes
 
