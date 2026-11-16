@@ -95,6 +95,18 @@ pub fn ensure_vault(base: &str, token: &str, vault_uuid: &str, name_cipher: &str
         .ok_or_else(|| Error::System(format!("could not create vault ({})", created.status)))
 }
 
+/// Replaces the encrypted label of an existing cloud vault. Used when the label is re-sealed
+/// (after a master-password change) or when a pre-encryption vault gets its name encrypted.
+pub fn set_vault_label(base: &str, token: &str, vault_id: &str, name_cipher: &str) -> Result<()> {
+    let url = format!("{}/vaults/{}", base.trim_end_matches('/'), vault_id);
+    let body = json!({ "nameCipher": name_cipher });
+    let response = http::send(Method::PATCH, &url, Some(token), None, Some(&body), None)?;
+    match response.status {
+        200 => Ok(()),
+        _ => Err(Error::System(format!("could not update the vault label ({})", response.status))),
+    }
+}
+
 /// Deletes the account and every vault it owns on the server.
 pub fn delete_account(base: &str, token: &str) -> Result<()> {
     let url = format!("{}/account", base.trim_end_matches('/'));

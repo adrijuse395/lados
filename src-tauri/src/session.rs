@@ -241,6 +241,15 @@ impl OpenVault {
         Ok(outcome)
     }
 
+    /// Replaces the vault with `vault` and saves it under new credentials. Used when a vault is
+    /// re-encrypted with a new master password during a coordinated password change.
+    pub fn adopt(&mut self, vault: Vault, composite: SecretKey, key: VaultKey) -> Result<SaveOutcome> {
+        let mut draft = Zeroizing::new(vault);
+        let outcome = self.file.save(&mut draft, Some((composite, key)))?;
+        std::mem::swap(&mut self.vault, &mut *draft);
+        Ok(outcome)
+    }
+
     /// Merges another vault into this one and saves the result.
     pub fn merge_from(&mut self, other: &Vault) -> Result<(MergeReport, SaveOutcome)> {
         self.modify(|vault| {

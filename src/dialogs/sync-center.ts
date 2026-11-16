@@ -1,6 +1,7 @@
 // The dedicated "Lados Sync" space: the account, the cloud vaults and the local vaults.
 // It is deliberately separate from Settings, because it is not a preference.
 
+import { listen } from "@tauri-apps/api/event";
 import { performSync } from "../app";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
@@ -30,6 +31,102 @@ function askPassword(title: string, message: string, initialKeyFile: string | nu
     initialKeyFile,
     action: async (credentials) => credentials,
   });
+}
+
+/** Progress pushed while the master password is being changed across every synced vault. */
+interface PasswordChangeProgress {
+  step: "vaults" | "account" | "sessions" | "done";
+  index: number;
+  total: number;
+  label: string;
+}
+
+/** The blocking, guided change of the one master password: the account and every synced vault. */
+async function changeMasterPassword(refresh: () => void): Promise<void> {
+  const current = passwordInput({ autofocus: true, placeholder: "Current master password" });
+  const currentKeyFile = keyFileField({});
+  const next = passwordInput({ strength: true, placeholder: "Choose a strong password" });
+  const confirmation = passwordInput({ placeholder: "Type it again" });
+  const nextKeyFile = keyFileField({ allowCreate: true });
+  const progress = h("div", { class: "stack", hidden: true }, h("p", { class: "muted", text: "" }));
+  const progressText = progress.firstElementChild as HTMLParagraphElement;
+  let unlisten: (() => void) | null = null;
+
+  const result = await showDialog<AppStatus>({
+    title: "Change master password",
+    size: "medium",
+    body: h(
+      "div",
+      { class: "stack" },
+      h(
+        "div",
+        { class: "notice warning" },
+        svgIcon("warning"),
+        h("span", {
+          text:
+            "Every synced vault is encrypted again with the new password, and your account uses it too. " +
+            "Your other devices must sign in with the new password afterwards. Do not close Lados while this runs.",
+        }),
+      ),
+      field("Current master password", current.element, { target: current.input }),
+      field("Current key file", currentKeyFile.element, { hint: "Only if you use one." }),
+      field("New master password", next.element, { target: next.input }),
+      field("Confirm the new password", confirmation.element, { target: confirmation.input }),
+      field("New key file", nextKeyFile.element, {
+        hint: "Optional. If you use one, the vaults need it together with the new password.",
+      }),
+      progress,
+    ),
+    submitLabel: "Change master password",
+    busyLabel: "Changing…",
+    onSubmit: async () => {
+      if (!current.value()) {
+        current.input.focus();
+        throw new Error("Enter your current master password");
+      }
+      if (!next.value()) {
+        next.input.focus();
+        throw new Error("Enter the new master password");
+      }
+      if (next.value() !== confirmation.value()) {
+        confirmation.input.focus();
+        throw new Error("The new passwords do not match");
+      }
+      if (estimateStrength(next.value()).score < 4) {
+        next.input.focus();
+        throw new Error("Choose a very strong master password — it protects every synced vault.");
+      }
+      progress.hidden = false;
+      progressText.textContent = "Starting…";
+      unlisten = await listen<PasswordChangeProgress>("master-password-progress", (event) => {
+        const { step, index, total, label } = event.payload;
+        progressText.textContent =
+          step === "vaults"
+            ? `Re-encrypting ${label || "a vault"} (${index + 1}/${total})…`
+            : step === "account"
+              ? "Updating your account…"
+              : step === "sessions"
+                ? "Signing out your other devices…"
+                : "Finishing…";
+      });
+      try {
+        return await backend.changeMasterPassword(
+          current.value(),
+          currentKeyFile.value(),
+          next.value(),
+          nextKeyFile.value(),
+        );
+      } finally {
+        unlisten?.();
+        unlisten = null;
+      }
+    },
+  });
+
+  if (!result) return;
+  store.status = result;
+  toast("Master password changed", "success");
+  refresh();
 }
 
 /** Opens the sync space: the sign-in form when signed out, the management view otherwise. */
@@ -148,6 +245,9 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
       toastError(error);
     }
   };
+
+  // Older versions uploaded labels in clear; offer to encrypt them without changing anything else.
+  const needsNames = cloud.some((vault) => !vault.nameCipher && vault.name);
 
   /** Syncs a local copy: in place when it is the open vault, otherwise after asking its password.
    *  If the vault's master password isn't the account's, it is re-encrypted first. */
@@ -324,6 +424,7 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         "div",
         { class: "sync-center-actions" },
         h("button", { type: "button", class: "button", disabled: true, title: "Subscriptions are coming soon" }, "Manage subscription"),
+        h("button", { type: "button", class: "button", onClick: () => void changeMasterPassword(refresh) }, "Change master password"),
         h("button", { type: "button", class: "button", onClick: () => void signOutOtherDevices() }, "Sign out other devices"),
         h("button", { type: "button", class: "button", onClick: () => void signOut(refresh) }, "Sign out"),
         h("button", { type: "button", class: "button danger", onClick: () => void removeAccount(refresh) }, "Delete account"),
@@ -338,6 +439,27 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         text: "Every vault on your account, in the cloud. A vault can be on this computer or on another one.",
       }),
       cloudRows.length > 0 ? h("ul", { class: "sync-vault-list" }, cloudRows) : h("p", { class: "muted", text: "No vaults are synced yet." }),
+      needsNames
+        ? h(
+            "div",
+            { class: "notice warning" },
+            svgIcon("warning"),
+            h("span", { text: "Some vault names are still stored without encryption." }),
+            h(
+              "button",
+              {
+                type: "button",
+                class: "button small",
+                onClick: () =>
+                  void run(async () => {
+                    store.status = await backend.resyncLabels();
+                    toast("Vault names are now encrypted", "success");
+                  }),
+              },
+              "Encrypt names",
+            ),
+          )
+        : null,
       store.syncError
         ? h("div", { class: "notice warning" }, svgIcon("warning"), h("span", { text: store.syncError }))
         : null,

@@ -371,6 +371,19 @@ async function ownedVault(env: Env, account: AccountRow, id: string) {
     .first<{ id: string; name: string; version: number }>();
 }
 
+/// Updates only a vault's encrypted label (its name). The server still cannot read it, and any
+/// legacy plaintext label left by older versions is cleared at the same time.
+async function patchVaultLabel(env: Env, account: AccountRow, id: string, request: Request): Promise<Response> {
+  const vault = await ownedVault(env, account, id);
+  if (!vault) return json({ error: "not_found" }, 404);
+  const body = await readJson<{ nameCipher?: string }>(request);
+  if (!body?.nameCipher) return json({ error: "invalid_request" }, 400);
+  await env.DB.prepare("UPDATE vaults SET name_cipher = ?, name = '', updated_at = ? WHERE id = ? AND account_id = ?")
+    .bind(body.nameCipher.slice(0, 5000), Date.now(), id, account.id)
+    .run();
+  return json({ ok: true });
+}
+
 function blobKey(vaultId: string, version: number): string {
   return `vaults/${vaultId}/v${version}`;
 }
@@ -505,6 +518,7 @@ export default {
         const id = match[1];
         if (method === "GET") return await getVault(env, account, id);
         if (method === "PUT") return await putVault(env, account, id, request);
+        if (method === "PATCH") return await patchVaultLabel(env, account, id, request);
         if (method === "DELETE") return await deleteVault(env, account, id);
       }
 

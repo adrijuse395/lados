@@ -120,6 +120,8 @@ pub fn run() {
             commands::sync_enable,
             commands::sync_enable_file,
             commands::rekey_vault_file,
+            commands::change_master_password,
+            commands::resync_labels,
             commands::sync_disable,
             commands::sync_disable_file,
             commands::sync_disable_vault,

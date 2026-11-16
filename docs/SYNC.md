@@ -360,10 +360,16 @@ The local application is **never** disabled — only the cloud part stops when u
   client verifies by attempting an OPAQUE login with that vault's credentials and refuses if it
   fails, telling the user to set the vault to the master password first. This prevents a cloud
   copy that could never be downloaded.
-- *Re-key-on-add* is implemented: when a vault's master password is not the account's, the app
-  offers to re-encrypt it with the master password (after confirming that password) instead of
-  just refusing. *Coordinated change* (changing the master password once, across the account and
-  synced vaults) is the remaining follow-up.
+- *Re-key-on-add*: when a vault's master password is not the account's, the app offers to
+  re-encrypt it with the master password (after confirming that password) instead of just
+  refusing.
+- *Coordinated change*: changing the master password once re-encrypts the account credential and
+  **every synced vault** under it — including cloud vaults that are not on this device, which are
+  re-encrypted in memory from their ciphertext. It is a single blocking operation with a progress
+  screen; the user is told their other devices must sign in with the new password afterwards. The
+  server still only ever receives ciphertext: each vault is decrypted on the device, re-encrypted
+  with the new password and re-uploaded, and labels are re-sealed through a dedicated
+  `PATCH /vaults/:id` endpoint that never sees a plaintext name.
 
 ## 20. Threat model
 
@@ -381,7 +387,9 @@ device and never transmitted.
 ### A breach of D1/R2, a stolen token, or a malicious operator
 - Yields **metadata** (account email, vault sizes, timestamps) and **ciphertext** — never
   plaintext. Vault **names are stored only as ciphertext**, encrypted with an account label key
-  that stays on the device, so they cannot be read from the server.
+  that stays on the device, so they cannot be read from the server. Labels uploaded in clear by
+  older versions are re-sealed (and the plaintext column cleared) on the next password change or
+  through the one-time *Encrypt names* action.
 - **Passwords are at risk only if a blob leaks *and* the master password is weak.** That is
   inherent to zero-knowledge; it is mitigated by a strong KDF, enforced strong account
   passwords, and minimising the chance of any leak.

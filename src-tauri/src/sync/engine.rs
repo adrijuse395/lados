@@ -132,6 +132,70 @@ pub fn sync(
     }
 }
 
+/// Re-encrypts one synced vault under a new master password, folding in the current cloud copy
+/// first. The cloud copy (and a local copy left over from an interrupted run) is decrypted with
+/// whichever of the two credentials opens it, so a retry still works. The server still only ever
+/// sees ciphertext. Returns the merged vault (when there is one) and the cloud version it ended at.
+#[cfg(feature = "sync")]
+pub fn rekey(
+    remote: &dyn Remote,
+    vault_id: &str,
+    local: Option<&Vault>,
+    old_composite: &SecretKey,
+    new_composite: &SecretKey,
+    new_key: &VaultKey,
+) -> Result<(Option<Vault>, u64)> {
+    let remote_now = remote.get(vault_id)?;
+
+    let remote_plain = match &remote_now {
+        Some(remote_vault) => Some(decrypt_either(&remote_vault.bytes, old_composite, new_composite)?),
+        None => None,
+    };
+
+    let merged = match (local, remote_plain) {
+        (Some(local), Some(remote)) => Some(merge::merge(local, &remote).vault),
+        (Some(local), None) => Some(local.clone()),
+        (None, Some(remote)) => Some(remote),
+        (None, None) => None,
+    };
+
+    let Some(merged) = merged else {
+        return Ok((None, remote_now.map(|vault| vault.version).unwrap_or(0)));
+    };
+
+    let base = remote_now.as_ref().map(|vault| vault.version);
+    let bytes = storage::encrypt_vault(&merged, new_key)?;
+    match remote.put(vault_id, base, &bytes)? {
+        PutOutcome::Stored { version } => Ok((Some(merged), version)),
+        PutOutcome::Conflict { current } => {
+            // Someone wrote first; their copy carries either the old or the new credentials.
+            let their_plain = decrypt_either(&current.bytes, old_composite, new_composite)?;
+            let outcome = merge::merge(&merged, &their_plain);
+            let bytes = storage::encrypt_vault(&outcome.vault, new_key)?;
+            match remote.put(vault_id, Some(current.version), &bytes)? {
+                PutOutcome::Stored { version } => Ok((Some(outcome.vault), version)),
+                PutOutcome::Conflict { .. } => Err(Error::invalid(
+                    "The vault changed again while the master password was being changed; please retry",
+                )),
+            }
+        }
+    }
+}
+
+/// Decrypts a blob with whichever of the two credentials opens it. During a password change a
+/// blob may still carry the old password's header, or already the new one after an interrupted
+/// run; both are readable.
+fn decrypt_either(bytes: &[u8], old_composite: &SecretKey, new_composite: &SecretKey) -> Result<Vault> {
+    for composite in [old_composite, new_composite] {
+        if let Ok(key) = key_for(composite, bytes)
+            && let Ok(vault) = storage::decrypt_vault(bytes, &key)
+        {
+            return Ok(vault);
+        }
+    }
+    Err(Error::InvalidCredentials)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +349,50 @@ mod tests {
 
         // Seeing the same or a newer version is fine.
         assert!(sync(&remote, "v1", &vault, &composite, &key, Some(1)).is_ok());
+    }
+
+    #[test]
+    fn rekey_reencrypts_so_the_new_password_opens_the_cloud_copy() {
+        let remote = MemoryRemote::new();
+        let (old_composite, old_key) = credentials();
+
+        let mut vault = Vault::new("Main").unwrap();
+        vault.add_entry(None, content("Mail", "1")).unwrap();
+        sync(&remote, "v1", &vault, &old_composite, &old_key, None).unwrap();
+
+        let new_composite = composite_key("new-pw", None);
+        let new_key = VaultKey::generate(&new_composite, KdfParams::FOR_TESTS).unwrap();
+        let (merged, version) =
+            rekey(&remote, "v1", Some(&vault), &old_composite, &new_composite, &new_key).unwrap();
+        assert_eq!(merged.unwrap().entries.len(), 1);
+        assert!(version >= 1);
+
+        // A brand-new device with only the new password derives the key and reads the copy.
+        let stored = remote.get("v1").unwrap().unwrap();
+        let derived = key_for(&new_composite, &stored.bytes).unwrap();
+        let plain = decrypt(&derived, &stored).unwrap();
+        assert_eq!(plain.entries.len(), 1);
+        assert_eq!(plain.entries[0].content.title, "Mail");
+    }
+
+    #[test]
+    fn rekey_can_reencrypt_a_vault_that_is_not_on_this_device() {
+        let remote = MemoryRemote::new();
+        let (old_composite, old_key) = credentials();
+        let mut vault = Vault::new("Main").unwrap();
+        vault.add_entry(None, content("Remote", "1")).unwrap();
+        sync(&remote, "v1", &vault, &old_composite, &old_key, None).unwrap();
+
+        let new_composite = composite_key("new-pw", None);
+        let new_key = VaultKey::generate(&new_composite, KdfParams::FOR_TESTS).unwrap();
+        // No local copy at all: it is still re-encrypted from its ciphertext alone.
+        let (merged, _version) =
+            rekey(&remote, "v1", None, &old_composite, &new_composite, &new_key).unwrap();
+        assert_eq!(merged.unwrap().entries.len(), 1);
+
+        let stored = remote.get("v1").unwrap().unwrap();
+        let derived = key_for(&new_composite, &stored.bytes).unwrap();
+        let plain = decrypt(&derived, &stored).unwrap();
+        assert_eq!(plain.entries[0].content.title, "Remote");
     }
 }

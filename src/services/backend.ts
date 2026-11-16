@@ -117,6 +117,13 @@ export const backend = {
     call<AppStatus>("sync_enable_file", { path, password, keyFile }),
   rekeyVaultFile: (path: string, password: string | null, keyFile: string | null, masterPassword: string, masterKeyFile: string | null) =>
     call<void>("rekey_vault_file", { path, password, keyFile, masterPassword, masterKeyFile }),
+  changeMasterPassword: (
+    currentPassword: string,
+    currentKeyFile: string | null,
+    newPassword: string,
+    newKeyFile: string | null,
+  ) => call<AppStatus>("change_master_password", { currentPassword, currentKeyFile, newPassword, newKeyFile }),
+  resyncLabels: () => call<AppStatus>("resync_labels"),
   syncDisable: () => call<AppStatus>("sync_disable"),
   syncDisableFile: (path: string) => call<AppStatus>("sync_disable_file", { path }),
   syncDisableVault: (localVaultId: string) => call<AppStatus>("sync_disable_vault", { localVaultId }),

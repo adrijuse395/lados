@@ -114,6 +114,8 @@ export interface LocalVaultView {
 export interface CloudVault {
   id: string;
   name: string;
+  /** The encrypted label; absent on vaults uploaded by older versions. */
+  nameCipher: string | null;
   vaultUuid: string | null;
   version: number;
   updatedAt: number;
