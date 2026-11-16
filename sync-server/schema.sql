@@ -11,8 +11,20 @@ CREATE TABLE IF NOT EXISTS accounts (
   scheme        TEXT NOT NULL DEFAULT 'legacy',  -- legacy | argon2 | argon2v2 | opaque
   opaque_record TEXT,                            -- OPAQUE registration record
   password_changed_at INTEGER,                   -- when the master password last changed
-  plan          TEXT NOT NULL DEFAULT 'active',  -- active | expired
+  -- Entitlement (written only by the billing webhook). See docs/BILLING.md.
+  plan          TEXT NOT NULL DEFAULT 'active',  -- comp|trialing|active|past_due|canceled|expired
+  plan_valid_until       INTEGER,                -- end of the current paid period (ms)
+  billing_provider       TEXT,                   -- 'paddle' | …
+  billing_customer_id    TEXT,
+  billing_subscription_id TEXT,
+  trial_used_at          INTEGER,
   created_at    INTEGER NOT NULL
+);
+
+-- Billing webhook events already applied, keyed by the provider's event id (idempotency).
+CREATE TABLE IF NOT EXISTS billing_events (
+  id          TEXT PRIMARY KEY,
+  received_at INTEGER NOT NULL
 );
 
 -- In-flight OPAQUE logins (short-lived handshake state).

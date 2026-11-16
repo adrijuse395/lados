@@ -70,6 +70,7 @@ interface AccountRow {
   id: string;
   email: string;
   plan: string;
+  plan_valid_until: number | null;
   password_changed_at: number | null;
 }
 
@@ -92,7 +93,7 @@ async function authenticate(env: Env, request: Request): Promise<AccountRow | nu
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.password_changed_at AS password_changed_at
+    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.plan_valid_until AS plan_valid_until, a.password_changed_at AS password_changed_at
        FROM sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
@@ -334,7 +335,22 @@ async function opaqueUpgradeFinish(env: Env, account: AccountRow, request: Reque
 }
 
 async function me(env: Env, account: AccountRow): Promise<Response> {
-  return json({ id: account.id, plan: account.plan, passwordChangedAt: account.password_changed_at ?? null });
+  return json({
+    id: account.id,
+    plan: account.plan,
+    planValidUntil: account.plan_valid_until ?? null,
+    passwordChangedAt: account.password_changed_at ?? null,
+  });
+}
+
+/// Whether an account may write to the cloud. `comp` and `trialing` are active; `past_due` and
+/// `canceled` stay writable until their paid period ends; everything else is read-only.
+function hasActivePlan(account: AccountRow): boolean {
+  if (account.plan === "active" || account.plan === "comp" || account.plan === "trialing") return true;
+  if (account.plan === "past_due" || account.plan === "canceled") {
+    return account.plan_valid_until != null && account.plan_valid_until > Date.now();
+  }
+  return false;
 }
 
 async function listVaults(env: Env, account: AccountRow): Promise<Response> {
@@ -516,20 +532,24 @@ export default {
         return json({ ok: true });
       }
 
-      if (account.plan !== "active") return json({ error: "payment_required", plan: account.plan }, 402);
-
+      // `/me` and every read stay available even when the plan lapsed, so the app can show the
+      // status and the user can always download — and delete — their own cloud data.
       if (path === "/me" && method === "GET") return await me(env, account);
       if (path === "/vaults" && method === "GET") return await listVaults(env, account);
-      if (path === "/vaults" && method === "POST") return await createVault(env, account, request);
 
       const match = path.match(/^\/vaults\/([^/]+)$/);
       if (match) {
         const id = match[1];
         if (method === "GET") return await getVault(env, account, id);
-        if (method === "PUT") return await putVault(env, account, id, request);
-        if (method === "PATCH") return await patchVaultLabel(env, account, id, request);
         if (method === "DELETE") return await deleteVault(env, account, id);
+        if (method === "PATCH") return await patchVaultLabel(env, account, id, request);
       }
+
+      // Writing new encrypted data needs an active plan.
+      if (!hasActivePlan(account)) return json({ error: "payment_required", plan: account.plan }, 402);
+
+      if (path === "/vaults" && method === "POST") return await createVault(env, account, request);
+      if (match && method === "PUT") return await putVault(env, account, match[1], request);
 
       return json({ error: "not_found" }, 404);
     } catch (error) {

@@ -58,6 +58,38 @@ neutral, so a future company (see §9) is a rename, not a rebuild.
 *gestor*/accountant before taking real money. The design below does not depend on which
 entity you pick.
 
+### 2.1 Migration checklist (do this **before** billing)
+
+Order matters — the domain/mailbox is the identity everything else signs up with.
+
+> **Do you need Gmail?** No. GitHub, Vercel, Cloudflare, Firefox AMO and Paddle all accept
+> **any** email (Proton is fine). The **only** Google requirement is the Chrome Web Store,
+> which needs a *Google Account* — and that can be created with a **non‑Gmail** address
+> (“use my current email instead”).
+
+1. **Domain + mailbox first.** Register a dedicated domain and set up `hello@`, `billing@`,
+   `security@`. No Google needed: either **Cloudflare Email Routing** (free) forwarding those
+   addresses to your Proton inbox, or Proton’s own **custom domain** (paid plan). Update the
+   contact in `docs/PRIVACY.md` and the site footer.
+2. **GitHub organization.** Create an org, invite the personal account as owner, then
+   **transfer** both repos (repo → Settings → Transfer). Stars, issues and history move with
+   them. Update: the local git `remote`, README/site links, `homepage_url` in
+   `browser-extension/manifest*.json`, and any CI secrets.
+3. **Vercel team.** Create a team (GitHub or email sign‑in — no Google), transfer the
+   `lados-web` project, move the domain.
+4. **Firefox (AMO).** Create the developer account with the org email, then **transfer the
+   add-on**. ⚠️ **Keep the gecko id `lados@adrijuse395.github.io`** — changing it creates a
+   *new* add-on and loses your installs; the `github.io` in it is only a cosmetic string.
+5. **Chrome Web Store.** The one Google piece: create a **Google Account** (a non‑Gmail
+   address is allowed), pay the $5, then transfer the item once published.
+6. **Cloudflare.** Ideally a dedicated account for the Worker/D1/R2. Accounts can't be
+   transferred, so either add the org email as a member now, or re-deploy later and move the
+   (tiny) D1/R2 data.
+7. **Paddle.** Register with the org email and the **legal seller** identity.
+
+What does **not** need to change: the add-on id, the app's bundle ids, and the sync protocol.
+The code stores no personal identifiers beyond the account's own email.
+
 ## 3. Product & price
 
 - **One plan: “Lados Sync”**, annual, **€12/year** (≈ €1/month). Annual-only keeps fixed
@@ -67,6 +99,17 @@ entity you pick.
 - **Comp plan** for the maintainer/testers — a plan value, not a roles system (`SYNC.md` §11).
 - Optional later: a **localized price** (Paddle supports regional pricing) and a
   “founder/lifetime” tier.
+
+### Currency
+
+**Recommendation: EUR (€12/year) as the base price, with Paddle's *localized pricing*
+enabled** so other regions see their own currency, tax included. Reasons: the seller's
+accounting and bank payouts are in EUR (Spain), so a EUR base avoids per-payout FX, and EU
+consumer rules expect a VAT-inclusive price — which Paddle shows automatically.
+
+**USD ($12/year) is equally valid** if you prefer the familiar software price point; Paddle
+localizes either way and **the code stores no currency**. The one rule: pick it **once**,
+when you create the product in Paddle, because the price is defined per currency there.
 
 ## 4. Entitlement states
 
@@ -201,11 +244,15 @@ of this is a *gestor* question — get one before the first payout.
    then production keys.
 4. **Later**: trials, dunning copy, localized pricing, founder tier.
 
-## 13. Open decisions
+## 13. Decisions
 
-1. **Provider**: Paddle (recommended) / Polar / Lemon Squeezy?
-2. **Price**: €12/year — good? Annual only, or also monthly?
-3. **Trial**: 14 days, no card, or none?
-4. **Expiry**: read-only after expiry (recommended) or block all cloud calls?
-5. **Identity now or later**: start the org/domain move now, or after the first paying users?
-6. **Entity**: autónomo vs SL — needs a gestor; do you want a checklist for it?
+| Decision | Choice |
+| --- | --- |
+| Provider | **Paddle** (Merchant of Record) |
+| Plan | Annual, **~$1/month · $12/year**; currency TBD (§3) |
+| Trial | **14 days, no card** |
+| Expiry | **Read-only** — download stays, upload returns `402` |
+| Identity | **Move to org accounts before billing** (§2.1) |
+
+Still to settle: the **base currency** (§3) and the **legal entity** (autónomo vs SL — a
+gestor question, §9).
