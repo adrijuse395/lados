@@ -236,6 +236,13 @@ of this is a *gestor* question — get one before the first payout.
 
 ## 12. Rollout plan
 
+> **Cloudflare gotcha.** Set `PADDLE_API_KEY` and `PADDLE_WEBHOOK_SECRET` as Worker **secrets**
+> (`wrangler secret put`, or `wrangler secret bulk` with a JSON file), **never** as
+> dashboard-only plaintext variables. A `wrangler deploy` replaces the script's variables with
+> those in `wrangler.toml`, so any variable added only in the dashboard **disappears** — which
+> silently switches billing off (`billing_unavailable`). `PADDLE_PRICE_ID` and
+> `TOKEN_TTL_SECONDS` live in `wrangler.toml` and are fine.
+
 1. **Server**: billing columns + `billing_events`, webhook (provider adapter), `/billing/checkout`,
    expose `plan`/`plan_valid_until` in `/me`.
 2. **App**: enable the “Manage subscription”/“Subscribe” button → open the checkout URL; render

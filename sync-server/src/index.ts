@@ -460,9 +460,15 @@ async function createCheckout(env: Env, account: AccountRow): Promise<Response> 
   });
   const body = (await response.json().catch(() => ({}))) as {
     data?: { checkout?: { url?: string } };
+    error?: { code?: string; detail?: string };
   };
   const url = body.data?.checkout?.url;
-  if (!response.ok || !url) return json({ error: "checkout_failed" }, 502);
+  if (!response.ok || !url) {
+    return json(
+      { error: "checkout_failed", paddleStatus: response.status, paddleCode: body.error?.code ?? null },
+      502,
+    );
+  }
   return json({ url });
 }
 
@@ -476,7 +482,10 @@ async function cancelSubscription(env: Env, account: AccountRow): Promise<Respon
     headers: { authorization: `Bearer ${env.PADDLE_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ effective_from: "next_billing_period" }),
   });
-  if (!response.ok) return json({ error: "cancel_failed" }, 502);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: { code?: string } };
+    return json({ error: "cancel_failed", paddleStatus: response.status, paddleCode: body.error?.code ?? null }, 502);
+  }
   return json({ ok: true });
 }
 
