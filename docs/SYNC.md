@@ -349,6 +349,20 @@ The local application is **never** disabled — only the cloud part stops when u
 - **New device:** sign in, pick a cloud vault, and the app downloads it, derives the key from
   the blob's own header, binds it and syncs.
 
+### Password model
+
+- A sync user has **one master password**: it is the **account password** and the password of
+  **every vault they sync**.
+- It must be **very strong** — enforced for the account and for every vault master password
+  (creating a vault, and *Change master key*). Individual **entry** passwords are never subject
+  to this rule.
+- A vault whose master password differs from the account's **cannot be synced silently**: the
+  client verifies by attempting an OPAQUE login with that vault's credentials and refuses if it
+  fails, telling the user to set the vault to the master password first. This prevents a cloud
+  copy that could never be downloaded.
+- *Coordinated change* (changing the master password once) and *re-key-on-add* are the intended
+  follow-ups, using the same machinery.
+
 ## 20. Threat model
 
 **Design:** zero-knowledge. The server stores only ciphertext; every key is derived on the

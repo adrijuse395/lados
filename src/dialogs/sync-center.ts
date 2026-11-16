@@ -103,11 +103,14 @@ function signInSection(refresh: () => void): HTMLElement {
     { class: "stack" },
     h("p", {
       class: "muted",
-      text: "Sign in to keep a vault in sync across your devices, and to download your cloud vaults on this one. Your vault is encrypted on this device before it is uploaded; only your master password opens it.",
+      text: "Sign in to sync your vaults across devices, or to download them on this one. Your vault is encrypted on this device before it is uploaded; only your master password opens it.",
     }),
     field("Email", email),
     field("Master password", password.element, { target: password.input }),
-    h("p", { class: "field-hint", text: "New accounts need a very strong password: it is what protects your vaults in the cloud." }),
+    h("p", {
+      class: "field-hint",
+      text: "This master password is your account password and the password of every vault you sync. It must be very strong.",
+    }),
     field("Key file", keyFile.element, { hint: "Only if the vault was created with one." }),
     error,
     h("div", { class: "sync-center-actions" }, signIn, create),

@@ -83,6 +83,7 @@ export const changeMasterKey = () =>
       submitLabel: "Change master key",
       busyLabel: "Encrypting…",
       newSecret: true,
+      minStrength: 4,
       allowCreateKeyFile: true,
       initialKeyFile: store.status?.keyFile ?? null,
       action: ({ password, keyFile }) => backend.changeMasterKey(password, keyFile),

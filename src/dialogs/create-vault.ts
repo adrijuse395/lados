@@ -3,7 +3,7 @@ import type { AppStatus } from "../types";
 import { field, fileNameOf, keyFileField, passwordInput } from "../ui/controls";
 import { h } from "../ui/dom";
 import { svgIcon } from "../ui/icons";
-import { confirmDialog, showDialog } from "../ui/modal";
+import { showDialog } from "../ui/modal";
 import { estimateStrength } from "../utils/strength";
 
 /** Characters that Windows does not accept in file names. */
@@ -130,14 +130,9 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
         else if (!(await chooseLocation())) throw new Error("Choose where to save the vault");
       }
       if (!location) throw new Error("Choose where to save the vault");
-      if (estimateStrength(password.value()).score < 2) {
-        const proceed = await confirmDialog({
-          title: "Weak master password",
-          message: "This password would be easy to guess. Use it anyway?",
-          confirmLabel: "Use it anyway",
-          danger: true,
-        });
-        if (!proceed) return undefined;
+      if (estimateStrength(password.value()).score < 4) {
+        password.input.focus();
+        throw new Error("Choose a very strong master password — it protects the whole vault.");
       }
       return backend.createVault(location, name.value.trim(), password.value(), keyFile.value());
     },

@@ -1,6 +1,7 @@
 import { h, type Child } from "../ui/dom";
 import { field, keyFileField, passwordInput } from "../ui/controls";
 import { showDialog } from "../ui/modal";
+import { estimateStrength } from "../utils/strength";
 
 export interface Credentials {
   password: string;
@@ -21,6 +22,8 @@ export async function credentialsDialog<T>(options: {
   allowCreateKeyFile?: boolean;
   /** An empty password is accepted when a key file is chosen (KeePass allows it). */
   passwordOptional?: boolean;
+  /** When set, the new password must reach this strength score (0–4). */
+  minStrength?: number;
   initialKeyFile?: string | null;
   action: (credentials: Credentials) => Promise<T>;
 }): Promise<T | null> {
@@ -56,6 +59,10 @@ export async function credentialsDialog<T>(options: {
       if (confirmation && confirmation.value() !== credentials.password) {
         confirmation.input.focus();
         throw new Error("The passwords do not match");
+      }
+      if (options.minStrength && credentials.password && estimateStrength(credentials.password).score < options.minStrength) {
+        password.input.focus();
+        throw new Error("Choose a very strong master password — it protects the whole vault.");
       }
       return { value: await options.action(credentials) };
     },

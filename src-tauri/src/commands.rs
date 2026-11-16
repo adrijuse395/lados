@@ -496,6 +496,24 @@ fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
     crate::sync::opaque_upgrade_finish(base, token, &record)
 }
 
+/// Whether `composite` is the account's master password. Verified by attempting an OPAQUE
+/// login, so nothing secret has to be remembered between sessions.
+#[cfg(feature = "sync")]
+fn is_the_account_password(base: &str, email: &str, composite: &SecretKey) -> bool {
+    match crate::sync::auth_secret(composite, email) {
+        Ok(auth) => opaque_login(base, email, auth.as_bytes()).is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// The error shown when a vault cannot be synced because its master password is not the account's.
+#[cfg(feature = "sync")]
+fn wrong_master_password() -> Error {
+    Error::invalid(
+        "This vault uses a different master password. Synced vaults must use your sync master password — use “Change master key” to set it, then sync again.",
+    )
+}
+
 /// Signs in to (or creates) a sync account from the app start, using the master credentials
 /// of the account (which are those of the vault it syncs).
 #[tauri::command]
@@ -633,6 +651,9 @@ pub async fn sync_enable(app: AppHandle) -> Result<AppStatus> {
                     let settings = state.settings();
                     settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
                 };
+                if !is_the_account_password(&base, &email, &composite) {
+                    return Err(wrong_master_password());
+                }
                 label_key_for(&state, &composite, &email)?
             };
             let name_cipher = crypto::seal(&label, &vault_name)?;
@@ -972,6 +993,9 @@ pub async fn sync_enable_file(
                         let settings = state.settings();
                         settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
                     };
+                    if !is_the_account_password(&base, &email, &composite) {
+                        return Err(wrong_master_password());
+                    }
                     label_key_for(&state, &composite, &email)?
                 };
                 let name_cipher = crypto::seal(&label, &vault_name)?;
@@ -997,6 +1021,9 @@ pub async fn sync_enable_file(
                     let settings = state.settings();
                     settings.sync_account.as_ref().map(|account| account.email.clone()).unwrap_or_default()
                 };
+                if !is_the_account_password(&base, &email, &composite) {
+                    return Err(wrong_master_password());
+                }
                 let label = label_key_for(&state, &composite, &email)?;
                 let mut open = OpenVault::open(path.clone(), composite)?;
                 let vault_name = open.vault().name.clone();
