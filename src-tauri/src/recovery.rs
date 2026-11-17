@@ -76,6 +76,10 @@ fn decode(text: &str) -> Option<SecretKey> {
 
 /// The contents of the recovery file the user keeps. `vaults` are the vaults this one code opens;
 /// `account` is the sync account it belongs to, when there is one.
+///
+/// The code comes **before** the list of vaults on purpose: the reader takes the first line that is
+/// made only of hexadecimal characters, and a vault whose file name happens to be exactly 64 hex
+/// characters would otherwise be read as the code.
 pub fn file_contents(vaults: &[String], account: Option<&str>, code: &str) -> Zeroizing<String> {
     let stamp = Local::now().format("%Y-%m-%d %H:%M");
     let mut covered = String::new();
@@ -86,18 +90,18 @@ pub fn file_contents(vaults: &[String], account: Option<&str>, code: &str) -> Ze
     Zeroizing::new(format!(
         "Lados recovery key\n\
          ==================\n\n\
+         Recovery key\n\
+         ------------\n\n\
+         {code}\n\n\
          {account_line}\
          Created:  {stamp}\n\
          Opens these vaults:\n\
          {covered}\n\
-         Keep this file somewhere safe, and away from the vaults and their backups. Anyone who\n\
-         has it can open every vault listed above, without the master password. Lados keeps no\n\
-         copy: if you lose both this file and the password, they can no longer be opened.\n\n\
+         Keep this file somewhere safe, away from the vaults and their backups. Anyone who has\n\
+         it can open every vault listed above, without the master password. Lados keeps no copy:\n\
+         if you lose both this file and the password, they can no longer be opened.\n\n\
          The key has no expiry and can be used as often as you need. Creating a new recovery\n\
-         key replaces it, and then this file stops working.\n\n\
-         Recovery key\n\
-         ------------\n\n\
-         {code}\n"
+         key replaces it, and then this file stops working.\n"
     ))
 }
 
@@ -144,6 +148,16 @@ mod tests {
         assert!(file.contains("Work.lados"));
         assert!(file.contains("someone@example.com"));
         assert!(parse_code(&file).is_some(), "the code is still found among the listing");
+    }
+
+    #[test]
+    fn a_hex_vault_name_is_not_mistaken_for_the_code() {
+        let (code, _key) = generate().unwrap();
+        let hex_name = "A".repeat(CODE_CHARS);
+        let file = file_contents(&[hex_name.clone()], None, &code);
+        let parsed = parse_code(&file).expect("the real code must win");
+        let expected = decode(&code).expect("the generated code is well formed");
+        assert_eq!(&parsed[..], &expected[..]);
     }
 
     #[test]
