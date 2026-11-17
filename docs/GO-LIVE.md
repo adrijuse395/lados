@@ -1,5 +1,10 @@
 # Lados — go-live runbook
 
+> **Not now.** This is a reference for launch day, not the next piece of work. There is no released
+> build that contains sync, and the paid product is not on sale — so nothing here is urgent, and
+> starting it early only leaves half-configured state to keep track of. Come back to it when the app
+> is genuinely ready to ship.
+
 The design lives in [`BILLING.md`](./BILLING.md); this is the **ordered** sequence for turning
 Lados Sync on for real money. Work top to bottom: several steps are manual reviews, and the order
 matters — in particular, **sync must not ship in a release before the live credentials are in**
@@ -11,9 +16,20 @@ Mark a box only when you have the evidence shown next to it.
 
 ## Phase 0 — decisions to settle first
 
-- [ ] **Legal entity**: autónomo or SL. (§9 of `BILLING.md`; a gestor question.) This goes on the
-      Terms page and into Paddle's verification.
-- [ ] **Seller identity**: legal name, NIF/CIF, postal address, contact email.
+**Lados is a brand, not a legal person.** `ladospwm` is a name the work trades under; there is no
+company behind it. So "the seller" is a **natural person** — whoever owns the product — unless an
+entity is created before this phase. That is not a blocker in itself: **Paddle accepts sole
+traders**, and its domain review asks for *“the company name or sole proprietor's brand (legal name
+preferred for sole proprietors)”*. The **legal name** would simply be that person's own name, and
+the **tax id** their NIF.
+
+Whether registering is *required* in order to invoice a Spanish merchant of record is a **gestor
+question**, and it belongs here rather than being guessed at.
+
+- [ ] **Who is the seller**: the owner as an individual, or a new entity. If an entity, allow time
+      for it to exist before Paddle's verification.
+- [ ] **Seller details**, in whichever form: legal name, tax id, postal address, contact email.
+      *(The Terms page needs these — not a company name that does not exist.)*
 - [ ] **The grandfathered account**: `st***@gmail.com` is `active` with no subscription — free by
       accident, because it predates billing. Decide now, or it stays free forever:
       - free on purpose → give it a `comp` grant (`node scripts/comp.mjs grant <email> "founder"`);
@@ -43,16 +59,20 @@ Mark a box only when you have the evidence shown next to it.
 
 ## Phase 2 — the legal pages go live
 
-- [x] A **pricing section** on the site, and **Terms / Refunds / Privacy** linked from every footer.
-      Paddle's domain review checks for both, so this had to land before the domain is submitted.
-      *(Done in `lados-web` `e99ff46`.)*
-- [ ] `[LEGAL NAME]`, `[NIF/CIF]`, `[ADDRESS]`, `[CONTACT EMAIL]` filled in
-      `lados-web/terms.html`, and the `BEFORE THIS PAGE GOES LIVE` comment removed.
-      ⚠️ **The Terms page is already linked from the live site, so the placeholders are publicly
-      visible until this is done.**
-- [ ] …and the same details reviewed by a gestor or lawyer **before** real money is taken.
+Two things the site needs, and both can only exist **once there is a real seller identity**:
+publishing legal terms without one is worse than having none.
+
+- [ ] **Seller details decided** (Phase 0), then fill `[LEGAL NAME]`, `[NIF/CIF]`, `[ADDRESS]`,
+      `[CONTACT EMAIL]` in `lados-web/terms.html` and remove the `BEFORE THIS PAGE GOES LIVE`
+      comment.
+- [ ] …and reviewed by a gestor or lawyer **before** real money is taken.
+- [ ] **Link** `terms.html` from the footer of `index.html` and `privacy.html` (plus a *Refunds*
+      link to `/terms#refunds`), and add a **pricing section** to `index.html`. Paddle's domain
+      review looks for exactly that.
+      *A first attempt was reverted (`e99ff46` → `faa4c03`) because it went live with placeholders
+      while no shipped build contains sync at all; `git revert faa4c03` brings it back.*
 - [ ] The site deployed and `https://<domain>/terms` shows the real seller identity.
-- [ ] Both URLs pasted into Paddle: the Terms, and `/terms#refunds` as the refund policy.
+- [ ] The URLs pasted into Paddle: the Terms, and `/terms#refunds` as the refund policy.
 
 ## Phase 3 — swap the credentials
 
