@@ -13,7 +13,7 @@ export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recover
  * in `src-tauri/src/commands/mod.rs`: when the running app process is older, the interface says so
  * plainly instead of failing with a puzzling error on the first call that needs something new.
  */
-export const API_REVISION = 1;
+export const API_REVISION = 2;
 
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {
@@ -146,6 +146,31 @@ export interface CloudVault {
   vaultUuid: string | null;
   version: number;
   updatedAt: number;
+}
+
+/** What creating a recovery key covered (it now covers every vault the master password opens). */
+export interface RecoveryKeyView {
+  /** Where the file holding the code was written. */
+  path: string;
+  /** The vaults this one code opens, by file name. */
+  vaults: string[];
+  /** The sync account it belongs to, when there is one. */
+  account: string | null;
+  /** Synced vaults that do not use this master password, so the key does not cover them. */
+  uncovered: string[];
+}
+
+/** What using a recovery key restored. */
+export interface RecoveryView {
+  status: AppStatus;
+  /** The vaults re-opened with the key, by file name. */
+  restored: string[];
+  /** The account credential now uses the new password, so syncing continues. */
+  accountUpdated: boolean;
+  /** Synced vaults the key did not cover: they still need the old password. */
+  uncovered: string[];
+  /** Anything else the user should be told. */
+  notice: string | null;
 }
 
 export type Icon = { kind: "builtin"; value: string } | { kind: "custom"; value: Uuid };

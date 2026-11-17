@@ -74,19 +74,27 @@ fn decode(text: &str) -> Option<SecretKey> {
     Some(key)
 }
 
-/// The contents of the recovery file the user saves.
-pub fn file_contents(vault: &str, code: &str) -> Zeroizing<String> {
+/// The contents of the recovery file the user keeps. `vaults` are the vaults this one code opens;
+/// `account` is the sync account it belongs to, when there is one.
+pub fn file_contents(vaults: &[String], account: Option<&str>, code: &str) -> Zeroizing<String> {
     let stamp = Local::now().format("%Y-%m-%d %H:%M");
+    let mut covered = String::new();
+    for vault in vaults {
+        covered.push_str(&format!("  - {vault}\n"));
+    }
+    let account_line = account.map(|email| format!("Account:  {email}\n")).unwrap_or_default();
     Zeroizing::new(format!(
         "Lados recovery key\n\
          ==================\n\n\
-         Vault:    {vault}\n\
-         Created:  {stamp}\n\n\
-         Keep this file somewhere safe, and away from the vault and its backups. Anyone who has\n\
-         it can open the vault without the master password. Lados keeps no copy: if you lose\n\
-         both this file and the password, the vault can no longer be opened.\n\n\
+         {account_line}\
+         Created:  {stamp}\n\
+         Opens these vaults:\n\
+         {covered}\n\
+         Keep this file somewhere safe, and away from the vaults and their backups. Anyone who\n\
+         has it can open every vault listed above, without the master password. Lados keeps no\n\
+         copy: if you lose both this file and the password, they can no longer be opened.\n\n\
          The key has no expiry and can be used as often as you need. Creating a new recovery\n\
-         key for this vault replaces it, and then this file stops working.\n\n\
+         key replaces it, and then this file stops working.\n\n\
          Recovery key\n\
          ------------\n\n\
          {code}\n"
@@ -100,7 +108,7 @@ mod tests {
     #[test]
     fn a_code_round_trips_through_the_file() {
         let (code, _key) = generate().unwrap();
-        let file = file_contents("personal.lados", &code);
+        let file = file_contents(&["personal.lados".to_string()], Some("someone@example.com"), &code);
         let parsed = parse_code(&file).expect("the code must be readable back");
         let expected = decode(&code).expect("the generated code is well formed");
         assert_eq!(&parsed[..], &expected[..]);
@@ -118,10 +126,24 @@ mod tests {
     #[test]
     fn stray_digits_in_the_file_are_never_mistaken_for_the_code() {
         let (code, _key) = generate().unwrap();
-        let file = file_contents("20260101-20270101.lados", &code);
+        let file = file_contents(&["20260101-20270101.lados".to_string()], None, &code);
         assert!(parse_code(&file).is_some());
         assert!(parse_code("Vault: 1234\nCreated: 2026-11-17 14:03\n").is_none());
         assert!(parse_code("").is_none());
+    }
+
+    #[test]
+    fn the_file_lists_every_vault_and_the_account() {
+        let (code, _key) = generate().unwrap();
+        let file = file_contents(
+            &["Personal.lados".to_string(), "Work.lados".to_string()],
+            Some("someone@example.com"),
+            &code,
+        );
+        assert!(file.contains("Personal.lados"));
+        assert!(file.contains("Work.lados"));
+        assert!(file.contains("someone@example.com"));
+        assert!(parse_code(&file).is_some(), "the code is still found among the listing");
     }
 
     #[test]

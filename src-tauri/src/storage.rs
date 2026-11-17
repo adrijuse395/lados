@@ -635,6 +635,29 @@ mod tests {
             .unwrap()
     }
 
+    /// The point of an account-wide key: one code, many vaults. Nothing in the format ties a code
+    /// to a single vault — each vault stores its own salt, nonce and wrap — so the same code opens
+    /// all of them.
+    #[test]
+    fn one_code_wraps_and_opens_several_vaults() {
+        let composite = crypto::composite_key("password", None);
+        let key_code = code(9);
+
+        for name in ["Personal", "Work"] {
+            let mut vault = Vault::new(name).unwrap();
+            vault.add_entry(None, EntryContent { title: name.into(), ..Default::default() }).unwrap();
+            let bytes = encrypt_vault(&vault, &wrapped(&composite, &key_code)).unwrap();
+            let header = Header::parse(&bytes).unwrap();
+            assert!(header.has_recovery());
+
+            // The one code opens this vault...
+            let opened = key_from_recovery(&header, &bytes, &key_code).unwrap();
+            assert_eq!(decrypt_vault(&bytes, &opened).unwrap().name, name);
+            // ...and a different code does not.
+            assert!(key_from_recovery(&header, &bytes, &code(4)).is_err());
+        }
+    }
+
     #[test]
     fn a_version_two_vault_round_trips_and_version_one_is_unchanged() {
         let composite = crypto::composite_key("password", None);

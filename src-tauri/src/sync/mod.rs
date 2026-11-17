@@ -18,7 +18,7 @@ pub use account::{
     opaque_register_finish, opaque_register_start, opaque_upgrade_finish, opaque_upgrade_start,
     set_vault_label, sign_out_everywhere,
 };
-pub use engine::{SyncOutcome, rekey, sync};
+pub use engine::{SyncOutcome, add_recovery_to_cloud, recover_cloud_vault, rekey, sync};
 pub use http::HttpRemote;
 pub use opaque::{login_finish, login_start, registration_finish, registration_start};
 pub use remote::{MemoryRemote, PutOutcome, Remote, RemoteVault};

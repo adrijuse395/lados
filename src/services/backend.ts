@@ -16,6 +16,8 @@ import type {
   MergeReport,
   Preferences,
   RecentVault,
+  RecoveryKeyView,
+  RecoveryView,
   RevisionSummary,
   SyncView,
   UrlMatchHit,
@@ -73,11 +75,12 @@ export const backend = {
   generateKeyFile: () => call<string | null>("generate_key_file"),
   changeMasterKey: (password: string, keyFile: string | null) =>
     call<AppStatus>("change_master_key", { password, keyFile }),
-  /** Creates a recovery key for the open vault and saves the file at `path`; returns it. */
-  createRecoveryKey: (path: string) => call<string>("create_recovery_key", { path }),
-  /** Opens the selected vault with a recovery key, then re-encrypts it under a new password. */
+  /** Creates one recovery key covering every vault the master password opens; returns what it covered. */
+  createRecoveryKey: (path: string, password: string, keyFile: string | null) =>
+    call<RecoveryKeyView>("create_recovery_key", { path, password, keyFile }),
+  /** Opens every vault a recovery key covers, then re-encrypts them under a new password. */
   recoverVault: (recoveryFile: string, newPassword: string, newKeyFile: string | null) =>
-    call<AppStatus>("recover_vault", { recoveryFile, newPassword, newKeyFile }),
+    call<RecoveryView>("recover_vault", { recoveryFile, newPassword, newKeyFile }),
   getVaultView: () => call<VaultView>("get_vault_view"),
   renameVault: (name: string) => call<void>("rename_vault", { name }),
 

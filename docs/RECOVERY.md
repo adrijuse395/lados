@@ -10,7 +10,7 @@ means losing the vault**. A recovery key is the deliberate way out of that, and 
   anywhere: the file is the only copy.
 - Anyone holding that file can open the vault **without the master password**, so it is exactly as
   sensitive as the password itself. Keep it away from the vault, its backups and any sync folder.
-- It is **per vault** and replaceable: creating a new one makes the previous file stop working.
+- It is **replaceable**: creating a new one makes the previous file stop working.
 
 ## How it works (the vault format)
 
@@ -53,20 +53,22 @@ instead of being narrower. It follows that the file is worth exactly what the pa
 
 *(A **local-only** vault may use a different password, so it keeps getting a key of its own.)*
 
-> Implementation status: the create side and the account-wide recovery are being built. Until they
-> land, a key covers the single vault it was made for.
-
 ## Using it
 
-- **Create:** vault menu → **Create a recovery key…** → choose where to save the file.
+- **Create:** vault menu → **Create a recovery key…** → choose where to save the file → confirm your
+  current master password (Lados needs it to add the key to each vault; it is not stored).
   (The menu says *Replace* when the open vault already has one.)
 - **Open with it:** on the unlock screen → **Use a recovery key…** → pick the file → **set a new
-  master password**. The vault is re-encrypted under it, and the same recovery key keeps working.
+  master password**. Every vault the key covers is re-encrypted under it — the ones here and the
+  account's cloud copies — and the same key keeps working. With a live session the account credential
+  moves to the new password too, and the other devices are signed out.
 
 ## What it does not do
 
-- It does **not** recover a **sync account**. The account's password is proved with OPAQUE, so a
-  forgotten password cannot authenticate. Recover the vault locally, then sign in and change the
-  account password from Sync settings — or connect a fresh account.
+- It does **not** recover a vault that neither the code nor the old password can open. If the account
+  password is changed, a synced vault that was **not** covered by the key stays under the old
+  password; the recovery flow says so, and that vault needs a key of its own.
+- It does **not** update the account without a live session. Signed out, only the vaults on this
+  device are recovered; sign in and change the sync password afterwards to resume syncing.
 - It does **not** help if the recovery file is lost. There is no third copy.
 - It is **not** a second factor: it is the same vault secret, reached a different way.

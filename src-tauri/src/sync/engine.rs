@@ -219,6 +219,62 @@ pub fn rekey(
     }
 }
 
+/// Adds a recovery wrap to a cloud vault that has no local file, and uploads it. A recovery key
+/// made on this device must cover every vault the account holds, including the ones that live only
+/// in the cloud: the vault is decrypted with the current password, re-encrypted under a re-wrapped
+/// key and sent back, so the server still only ever sees ciphertext.
+#[cfg(feature = "sync")]
+pub fn add_recovery_to_cloud(
+    remote: &dyn Remote,
+    vault_id: &str,
+    composite: &SecretKey,
+    code: &SecretKey,
+) -> Result<()> {
+    let Some(remote_vault) = remote.get(vault_id)? else {
+        return Ok(());
+    };
+    let key = key_for(composite, &remote_vault.bytes)?;
+    let vault = decrypt(&key, &remote_vault)?;
+    let wrapped = key.with_recovery(composite, code)?;
+    let bytes = storage::encrypt_vault(&vault, &wrapped)?;
+    match remote.put(vault_id, Some(remote_vault.version), &bytes)? {
+        PutOutcome::Stored { .. } => Ok(()),
+        PutOutcome::Conflict { .. } => Err(Error::invalid(
+            "The cloud copy changed while the recovery key was being made; please try again",
+        )),
+    }
+}
+
+/// Re-encrypts a cloud vault that has no local file under new credentials, keeping its recovery
+/// wrap. Used when a recovery key is used on a device that does not hold every vault.
+#[cfg(feature = "sync")]
+pub fn recover_cloud_vault(
+    remote: &dyn Remote,
+    vault_id: &str,
+    code: &SecretKey,
+    new_composite: &SecretKey,
+    kdf: KdfParams,
+) -> Result<()> {
+    let Some(remote_vault) = remote.get(vault_id)? else {
+        return Ok(());
+    };
+    // A vault without a wrap, or with one made from another code, is simply not covered.
+    let header = storage::Header::parse(&remote_vault.bytes)?;
+    if !header.has_recovery() {
+        return Err(Error::Corrupted);
+    }
+    let key = storage::key_from_recovery(&header, &remote_vault.bytes, code)?;
+    let vault = storage::decrypt_vault(&remote_vault.bytes, &key)?;
+    let new_key = key.rewrap(new_composite, kdf)?;
+    let bytes = storage::encrypt_vault(&vault, &new_key)?;
+    match remote.put(vault_id, Some(remote_vault.version), &bytes)? {
+        PutOutcome::Stored { .. } => Ok(()),
+        PutOutcome::Conflict { .. } => Err(Error::invalid(
+            "The cloud copy changed while it was being recovered; please try again",
+        )),
+    }
+}
+
 /// The key of a blob under whichever of the two credentials it carries.
 #[cfg(feature = "sync")]
 fn key_either(bytes: &[u8], old_composite: &SecretKey, new_composite: &SecretKey) -> Result<VaultKey> {
@@ -247,6 +303,7 @@ mod tests {
     use super::*;
     use crate::crypto::{composite_key, KdfParams};
     use crate::models::EntryContent;
+    use zeroize::Zeroizing;
 
     use super::super::remote::MemoryRemote;
 
@@ -514,5 +571,32 @@ mod tests {
         let derived = key_for(&new_composite, &stored.bytes).unwrap();
         let plain = decrypt(&derived, &stored).unwrap();
         assert_eq!(plain.entries[0].content.title, "Remote");
+    }
+
+    /// A recovery key made on this device must reach the vaults the account holds in the cloud,
+    /// including the ones with no local file, and a recovery must re-encrypt them under the new
+    /// password while keeping the code working.
+    #[test]
+    fn a_cloud_only_vault_receives_the_wrap_and_can_be_recovered() {
+        let remote = MemoryRemote::new();
+        let (composite, key) = credentials();
+        let mut vault = Vault::new("Main").unwrap();
+        vault.add_entry(None, content("Mail", "1")).unwrap();
+        sync(&remote, "v1", &vault, &composite, &key, None).unwrap();
+
+        let code = Zeroizing::new([11u8; 32]);
+        add_recovery_to_cloud(&remote, "v1", &composite, &code).unwrap();
+        let cloud = remote.get("v1").unwrap().unwrap();
+        let header = Header::parse(&cloud.bytes).unwrap();
+        assert!(header.has_recovery(), "the cloud copy now carries a wrap");
+        assert!(storage::key_from_recovery(&header, &cloud.bytes, &code).is_ok());
+
+        let new_composite = composite_key("new-pw", None);
+        recover_cloud_vault(&remote, "v1", &code, &new_composite, KdfParams::FOR_TESTS).unwrap();
+        let cloud = remote.get("v1").unwrap().unwrap();
+        let derived = key_for(&new_composite, &cloud.bytes).unwrap();
+        assert_eq!(decrypt(&derived, &cloud).unwrap().entries.len(), 1);
+        let header = Header::parse(&cloud.bytes).unwrap();
+        assert!(storage::key_from_recovery(&header, &cloud.bytes, &code).is_ok(), "the code still works");
     }
 }
