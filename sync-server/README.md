@@ -71,6 +71,17 @@ A granted email is created as `comp` when it registers; granting an existing acc
 at once. The `/admin/comp` routes return `404` until `ADMIN_TOKEN` is set. Revoking turns an
 existing `comp` account read-only. No password is ever involved.
 
+### Looking at the numbers
+
+```bash
+node scripts/funnel.mjs        # read-only; uses the wrangler login you already have
+```
+
+Prints the billing funnel: accounts, trials started, **trialled → paid**, who is `comp`, who has
+never paid, and how much webhook traffic there has been. `trial_used_at` records when a trial
+began, which is what makes the conversion a real cohort number — `plan` only ever holds the current
+state of an account.
+
 ### Upgrading an existing database
 
 New databases get everything from `schema.sql`. An existing one needs each migration once:
