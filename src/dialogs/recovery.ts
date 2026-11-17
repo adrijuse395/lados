@@ -6,6 +6,7 @@
 import { refreshStatus, showStatus } from "../app";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
+import { fileNameOf } from "../ui/controls";
 import { h } from "../ui/dom";
 import { svgIcon } from "../ui/icons";
 import { confirmDialog } from "../ui/modal";
@@ -54,8 +55,13 @@ export async function recoverWithKey(): Promise<void> {
         { class: "stack" },
         h("p", {
           text:
-            "The vault will be opened with your recovery key and encrypted again with this password. " +
-            "The recovery key keeps working, so keep the file you have.",
+            "The vault will be opened with the recovery key you chose, then encrypted again with the new " +
+            "password below. The recovery key keeps working, so keep the file you have.",
+        }),
+        h("p", { class: "muted", text: `Recovery key: ${fileNameOf(file)}` }),
+        h("p", {
+          class: "muted",
+          text: "The key file below belongs to the new password — leave it empty unless you want to use one.",
         }),
         synced
           ? h(

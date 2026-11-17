@@ -57,6 +57,15 @@ pub async fn recover_vault(
     let open = run_blocking(move || {
         let bytes = storage::read_file(&target)?;
         let header = storage::Header::parse(&bytes)?;
+        // A vault with no recovery wrap is not damaged — it simply has no recovery key: the key may
+        // have been made for a different vault, or for a copy from before the key existed. Saying so
+        // is far more useful than "the vault file is damaged".
+        if !header.has_recovery() {
+            return Err(Error::invalid(
+                "This vault has no recovery key. The file you chose was made for a different vault, or for a \
+                 copy of this one from before the key existed.",
+            ));
+        }
         let recovered = storage::key_from_recovery(&header, &bytes, &code)?;
         let vault = storage::decrypt_vault(&bytes, &recovered)?;
         // Save it under the new master password, keeping the recovery wrap so the same file opens

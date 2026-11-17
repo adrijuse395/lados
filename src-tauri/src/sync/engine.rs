@@ -76,8 +76,8 @@ pub fn sync(
     let mut version = remote_now.as_ref().map(|vault| vault.version).unwrap_or(0);
 
     if let Some(remote_vault) = &remote_now {
-        key = key_for(composite, &remote_vault.bytes)?;
-        let remote_plain = decrypt(&key, remote_vault)?;
+        let remote_key = key_for(composite, &remote_vault.bytes)?;
+        let remote_plain = decrypt(&remote_key, remote_vault)?;
         let outcome = merge::merge(local, &remote_plain);
         merged = outcome.vault;
         report = outcome.report;
@@ -85,6 +85,17 @@ pub fn sync(
         needs_upload = outcome.remote_outdated;
         base = Some(remote_vault.version);
         version = remote_vault.version;
+
+        // **A recovery key must survive syncing.** Taking the cloud copy's header wholesale would
+        // drop this device's recovery wrap whenever the cloud copy came from an older build or from
+        // a device that has no recovery key — the wrap would disappear silently and the file the
+        // user kept would stop opening the vault. So this device keeps its wrapped form and uploads
+        // it, which also carries the wrap to the other copies.
+        if local_key.has_recovery() && !remote_key.has_recovery() {
+            needs_upload = true;
+        } else {
+            key = remote_key;
+        }
     }
 
     if !needs_upload {
@@ -114,14 +125,20 @@ pub fn sync(
             let current_key = key_for(composite, &current.bytes)?;
             let remote_plain = decrypt(&current_key, &current)?;
             let outcome = merge::merge(&merged, &remote_plain);
-            let bytes = storage::encrypt_vault(&outcome.vault, &current_key)?;
+            // Same rule as above: never trade a recovery wrap for a copy that has none.
+            let write_key = if key.has_recovery() && !current_key.has_recovery() {
+                &key
+            } else {
+                &current_key
+            };
+            let bytes = storage::encrypt_vault(&outcome.vault, write_key)?;
             match remote.put(vault_id, Some(current.version), &bytes)? {
                 PutOutcome::Stored { version: stored } => Ok(SyncOutcome {
                     vault: outcome.vault,
                     changed_locally: changed_locally || outcome.local_changed,
                     uploaded: true,
                     report: outcome.report,
-                    key: current_key,
+                    key: write_key.clone(),
                     version: stored,
                 }),
                 PutOutcome::Conflict { .. } => Err(Error::invalid(
@@ -368,6 +385,34 @@ mod tests {
 
         // Seeing the same or a newer version is fine.
         assert!(sync(&remote, "v1", &vault, &composite, &key, Some(1)).is_ok());
+    }
+
+    /// A recovery wrap must never be traded for a cloud copy that has none. Doing so destroys the
+    /// recovery key the user saved, silently, and their file stops opening the vault.
+    #[test]
+    fn a_recovery_wrap_survives_syncing_with_an_unwrapped_copy() {
+        let remote = MemoryRemote::new();
+        let (composite, plain) = credentials();
+        let mut vault = Vault::new("Main").unwrap();
+        vault.add_entry(None, content("Mail", "1")).unwrap();
+
+        // Another device — or an older build — put an unwrapped, version-1 copy in the cloud.
+        sync(&remote, "v1", &vault, &composite, &plain, None).unwrap();
+        let cloud = remote.get("v1").unwrap().unwrap();
+        assert_eq!(Header::parse(&cloud.bytes).unwrap().version, 1);
+
+        // This device has a recovery key for the same vault.
+        let code = [7u8; 32];
+        let wrapped = plain.with_recovery(&composite, &code).unwrap();
+
+        let outcome = sync(&remote, "v1", &vault, &composite, &wrapped, Some(1)).unwrap();
+        assert!(outcome.key.has_recovery(), "the wrap must not be dropped by a sync");
+
+        // And the cloud copy carries it now, so the other copies receive the wrap too.
+        let cloud = remote.get("v1").unwrap().unwrap();
+        let header = Header::parse(&cloud.bytes).unwrap();
+        assert!(header.has_recovery(), "the wrap must reach the cloud copy");
+        assert!(storage::key_from_recovery(&header, &cloud.bytes, &code).is_ok());
     }
 
     #[test]
