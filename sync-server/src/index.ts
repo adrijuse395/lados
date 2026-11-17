@@ -179,10 +179,14 @@ async function opaqueRegisterFinish(env: Env, request: Request): Promise<Respons
 
   const id = crypto.randomUUID();
   const start = await initialPlan(env, email);
+  // Remember when the trial began. `plan` only ever holds the *current* state, so without this
+  // there is no way to answer "of the accounts that trialled, how many paid?" — which is the one
+  // number that can tell us whether the price is working.
+  const trialStartedAt = start.plan === "trialing" ? Date.now() : null;
   await env.DB.prepare(
-    "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, plan_valid_until, created_at) VALUES (?, ?, '', '', 'opaque', ?, ?, ?, ?)",
+    "INSERT INTO accounts (id, email, salt, verifier, scheme, opaque_record, plan, plan_valid_until, trial_used_at, created_at) VALUES (?, ?, '', '', 'opaque', ?, ?, ?, ?, ?)",
   )
-    .bind(id, email, body.registrationRecord, start.plan, start.validUntil, Date.now())
+    .bind(id, email, body.registrationRecord, start.plan, start.validUntil, trialStartedAt, Date.now())
     .run();
   const token = await startSession(env, id);
   return json({ token, plan: start.plan });
