@@ -68,9 +68,22 @@ Produces (under `browser-extension/build/`, git-ignored):
 2. Fill the listing from [`STORE-LISTING.md`](./STORE-LISTING.md) (copy‑paste fields + checklist).
 3. Privacy: **no data collected**.
 
-**Edge Add-ons** — free, same `lados-chrome.zip`:
-1. Upload at <https://partner.microsoft.com/dashboard/microsoftedge>.
-2. Reuse the same listing copy from [`STORE-LISTING.md`](./STORE-LISTING.md).
+**Edge Add-ons** — free, same `lados-chrome.zip`.
+
+> **Blocked since Nov 2026 — Microsoft-side.** Enrollment can't be completed: `Account settings →
+> Programs → Microsoft Edge → Get started` redirects to an empty Partner Center Home ("Go to Account
+> Settings on your Dashboard menu to start setting up your account"), and the registration form
+> never appears. It affects many developers and is tracked in
+> <https://github.com/microsoft/MicrosoftEdge-Extensions/issues/905>. **Chrome is unaffected.** The
+> package and the listing copy below are ready; reopen this once Microsoft fixes the provisioning.
+
+1. Sign in with a **personal Microsoft account (MSA)** — an Outlook/Live/Hotmail address, or a
+   personal GitHub account. Work/school accounts, and a plain Gmail address, are **not** accepted.
+2. Upload the same `lados-chrome.zip` at <https://partner.microsoft.com/dashboard/microsoftedge>.
+3. Reuse the listing copy from [`STORE-LISTING.md`](./STORE-LISTING.md). Edge wants a **300×300**
+   logo and, optionally, a **440×280** tile (screenshots may be 640×480 or 1280×800).
+4. The certification notes must say the extension does nothing without the Lados desktop app on
+   `127.0.0.1:18765` — reviewers otherwise see no behaviour.
 
 The store pages for Firefox, Chrome and Edge are wired in `src/dialogs/browser-extension.ts`;
 set each URL there once the add-on is published.
