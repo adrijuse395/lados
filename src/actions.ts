@@ -8,6 +8,7 @@ import { folderSelect, openEntryEditor } from "./dialogs/entry-editor";
 import { openFolderEditor } from "./dialogs/folder-editor";
 import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
+import { createRecoveryKeyDialog } from "./dialogs/recovery";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
 import { openChangeMasterPassword, openSyncCenter } from "./dialogs/sync-center";
@@ -97,6 +98,12 @@ export const changeMasterKey = () =>
     if (!status) return;
     await showStatus(status);
     toast("The master key was changed", "success");
+  });
+
+/** Gives this vault a recovery key: a code, kept in a file, that opens it without the password. */
+export const createRecoveryKey = () =>
+  attempt(async () => {
+    await createRecoveryKeyDialog();
   });
 
 /** Signed-in users change the account master password, which re-encrypts every synced vault. */

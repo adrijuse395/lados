@@ -44,14 +44,6 @@ pub async fn create_vault(
     Ok(state.status())
 }
 
-fn locked_path(app: &AppHandle) -> Result<PathBuf> {
-    match &*app.state::<AppState>().session() {
-        Session::Locked { path } => Ok(path.clone()),
-        Session::Unlocked(_) => Err(Error::invalid("The vault is already unlocked")),
-        Session::Closed => Err(Error::NoVaultSelected),
-    }
-}
-
 #[tauri::command]
 pub async fn unlock_vault(app: AppHandle, password: String, key_file: Option<String>) -> Result<AppStatus> {
     let password = Zeroizing::new(password);
@@ -160,6 +152,7 @@ impl FileKind {
             FileKind::Csv => ("CSV file", &[csv_io::FILE_EXTENSION]),
             FileKind::Kdbx => ("KeePass database", &[keepass_io::FILE_EXTENSION]),
             FileKind::Image => ("Image", &["png", "jpg", "jpeg", "gif", "webp", "ico"]),
+            FileKind::Recovery => ("Recovery key", &["txt"]),
         }
     }
 
@@ -171,6 +164,7 @@ impl FileKind {
             FileKind::Csv => format!("import.{}", csv_io::FILE_EXTENSION),
             FileKind::Kdbx => format!("import.{}", keepass_io::FILE_EXTENSION),
             FileKind::Image => "icon.png".into(),
+            FileKind::Recovery => "Lados recovery key.txt".into(),
         }
     }
 }

@@ -177,8 +177,9 @@ enable sync, and says so in the UI. (A later version may allow key files with an
 ## 10. Recovery
 
 - **No server-side password reset** — impossible by design (the server can't read data).
-- Optional **recovery key**: a high-entropy value shown once that can unlock the vault
-  (implemented locally in Lados, like a key file). Stored by the user offline.
+- **Recovery key**: a high-entropy code, kept by the user in a file, that opens the vault without
+  the master password (implemented locally; the server and the interface never see it). It is
+  per-vault and opt-in. Design and format: [`RECOVERY.md`](./RECOVERY.md).
 
 ## 11. Pricing and billing (proposed)
 
@@ -267,6 +268,7 @@ cryptography and all conflict resolution happen on the user's devices (§7).
 | **2** | Minimal Lados Sync server (auth + blobs) + docs | No (separate repo) |
 | **3** | Account UI behind the feature flag; manual + unlock/close sync | Only when feature enabled |
 | **4** | Billing (Paddle), self-host docs, recovery key | Separate |
+| **4 (done)** | Billing sandbox verified end to end; recovery keys shipped (`RECOVERY.md`) | Only when the vault uses one |
 | **5** | Enable the feature in releases; announce | Yes (intentional) |
 
 ## 16. How we avoid breaking the current release

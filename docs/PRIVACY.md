@@ -44,6 +44,9 @@ devices. Because the encryption key never leaves your device, the server stores 
 opaque ciphertext it cannot read. Vault contents, vault names and entry data are never
 available to us. The protocol is documented in [`SYNC.md`](./SYNC.md).
 
+**Recovery keys** (see [`RECOVERY.md`](./RECOVERY.md)) are a file **you** keep: Lados never stores
+the code and never transmits it, so it never reaches us.
+
 ## Payments (Lados Sync subscriptions)
 
 Lados Sync is sold by **Paddle**, which acts as the *Merchant of Record*: Paddle is the

@@ -2,6 +2,7 @@
 
 import { showStatus } from "../app";
 import { pickVaultToOpen } from "../dialogs/open-vault";
+import { recoverWithKey } from "../dialogs/recovery";
 import { backend, isCredentialError } from "../services/backend";
 import { store } from "../state/store";
 import { field, keyFileField, passwordInput } from "../ui/controls";
@@ -94,6 +95,7 @@ export function renderUnlock(container: HTMLElement): void {
     h(
       "div",
       { class: "unlock-links" },
+      h("button", { type: "button", class: "link-button", onClick: () => void recoverWithKey() }, "Use a recovery key…"),
       h("button", { type: "button", class: "link-button", onClick: () => void openAnother() }, "Open another vault…"),
       h("button", { type: "button", class: "link-button", onClick: () => void backToStart() }, "Back to start"),
     ),

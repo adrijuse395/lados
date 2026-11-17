@@ -34,6 +34,8 @@ pub struct AppStatus {
     pub preferences: Preferences,
     pub recent_vaults: Vec<RecentVaultView>,
     pub app_version: &'static str,
+    /// Whether the open vault can also be opened with a recovery key.
+    pub has_recovery_key: bool,
     /// Cloud sync state: whether the user is signed in and whether this vault syncs.
     pub sync: SyncView,
 }

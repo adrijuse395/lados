@@ -121,9 +121,13 @@ impl AppState {
     }
 
     pub fn status(&self) -> AppStatus {
-        let (state, path) = {
+        let (state, path, has_recovery_key) = {
             let session = self.session();
-            (session.state(), session.path().map(Path::to_path_buf))
+            let has_recovery_key = match &*session {
+                Session::Unlocked(open) => open.key().has_recovery(),
+                _ => false,
+            };
+            (session.state(), session.path().map(Path::to_path_buf), has_recovery_key)
         };
         let settings = self.settings();
         AppStatus {
@@ -141,6 +145,7 @@ impl AppState {
                 .map(|recent| RecentVaultView::new(recent, settings.synced_vault(&recent.path)))
                 .collect(),
             app_version: env!("CARGO_PKG_VERSION"),
+            has_recovery_key,
             sync: {
                 let account = settings.sync_account.as_ref();
                 let synced = path.as_deref().and_then(|path| settings.synced_vault(path));

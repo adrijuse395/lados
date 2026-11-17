@@ -6,7 +6,7 @@ export type Uuid = string;
 export type SessionState = "closed" | "locked" | "unlocked";
 export type Theme = "system" | "light" | "dark";
 export type LockReason = "user" | "inactivity" | "tray";
-export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image";
+export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recovery";
 
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {
@@ -80,6 +80,8 @@ export interface AppStatus {
   preferences: Preferences;
   recentVaults: RecentVault[];
   appVersion: string;
+  /** Whether the open vault can also be opened with a recovery key. */
+  hasRecoveryKey: boolean;
   /** Cloud sync state. */
   sync: SyncView;
 }

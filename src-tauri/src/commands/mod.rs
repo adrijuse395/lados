@@ -40,6 +40,7 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 pub mod account;
 pub mod billing;
 pub mod entries;
+pub mod recovery;
 pub mod sync;
 pub mod transfer;
 pub mod vault;
@@ -179,6 +180,8 @@ pub enum FileKind {
     Csv,
     Kdbx,
     Image,
+    /// The text file a recovery key is written to.
+    Recovery,
 }
 
 /// Where `.lados` vaults live.
@@ -448,6 +451,15 @@ fn emit_password_change(app: &AppHandle, step: &str, index: usize, total: usize,
         "master-password-progress",
         serde_json::json!({ "step": step, "index": index, "total": total, "label": label }),
     );
+}
+
+/// The file of the vault that is selected but still locked: what unlocking acts on.
+fn locked_path(app: &AppHandle) -> Result<PathBuf> {
+    match &*app.state::<AppState>().session() {
+        Session::Locked { path } => Ok(path.clone()),
+        Session::Unlocked(_) => Err(Error::invalid("The vault is already unlocked")),
+        Session::Closed => Err(Error::NoVaultSelected),
+    }
 }
 
 // ----- Application -----

@@ -13,10 +13,11 @@ use crate::error::Result;
 /// Hex characters in a code (32 bytes).
 const CODE_CHARS: usize = KEY_LEN * 2;
 
-/// A new recovery code: 32 random bytes, as uppercase hex grouped in fours.
-pub fn new_code() -> Result<Zeroizing<String>> {
-    let bytes = crypto::random_bytes::<KEY_LEN>()?;
-    Ok(Zeroizing::new(group(&hex(&bytes))))
+/// A new recovery code: the text the user keeps, and the 32 bytes it encodes.
+pub fn generate() -> Result<(Zeroizing<String>, SecretKey)> {
+    let key = Zeroizing::new(crypto::random_bytes::<KEY_LEN>()?);
+    let text = Zeroizing::new(group(&hex(&key[..])));
+    Ok((text, key))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -96,7 +97,7 @@ mod tests {
 
     #[test]
     fn a_code_round_trips_through_the_file() {
-        let code = new_code().unwrap();
+        let (code, _key) = generate().unwrap();
         let file = file_contents("personal.lados", &code);
         let parsed = parse_code(&file).expect("the code must be readable back");
         let expected = decode(&code).expect("the generated code is well formed");
@@ -105,8 +106,8 @@ mod tests {
 
     #[test]
     fn codes_are_unique_and_well_formed() {
-        let first = new_code().unwrap();
-        let second = new_code().unwrap();
+        let (first, _) = generate().unwrap();
+        let (second, _) = generate().unwrap();
         assert_ne!(*first, *second);
         let digits: String = first.chars().filter(|c| c.is_ascii_hexdigit()).collect();
         assert_eq!(digits.len(), CODE_CHARS);
@@ -114,7 +115,7 @@ mod tests {
 
     #[test]
     fn stray_digits_in_the_file_are_never_mistaken_for_the_code() {
-        let code = new_code().unwrap();
+        let (code, _key) = generate().unwrap();
         let file = file_contents("20260101-20270101.lados", &code);
         assert!(parse_code(&file).is_some());
         assert!(parse_code("Vault: 1234\nCreated: 2026-11-17 14:03\n").is_none());
@@ -129,7 +130,7 @@ mod tests {
 
     #[test]
     fn a_code_pasted_on_its_own_is_accepted() {
-        let code = new_code().unwrap();
+        let (code, _key) = generate().unwrap();
         assert!(parse_code(&code).is_some());
         let bare: String = code.chars().filter(|c| *c != ' ').collect();
         assert!(parse_code(&bare).is_some());

@@ -51,6 +51,11 @@ function openMoreMenu(anchor: HTMLElement): void {
     signedIn
       ? { label: "Change master password…", icon: "key", onSelect: () => void actions.changeMasterPassword() }
       : { label: "Change master key…", icon: "key", onSelect: () => void actions.changeMasterKey() },
+    {
+      label: store.status?.hasRecoveryKey ? "Replace the recovery key…" : "Create a recovery key…",
+      icon: "lock",
+      onSelect: () => void actions.createRecoveryKey(),
+    },
     { label: "Settings…", icon: "settings", onSelect: () => void actions.showSettings() },
     { label: "Sync settings…", icon: "cloud", onSelect: () => void actions.showSyncCenter() },
     { label: "Find for URL…", icon: "search", onSelect: () => void actions.showUrlMatchTester() },
