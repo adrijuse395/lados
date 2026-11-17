@@ -555,7 +555,7 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     h(
       "div",
       { class: "sync-account-head" },
-      h("span", { class: "sync-account-avatar" }, svgIcon("cloudCheck")),
+      h("span", { class: "sync-account-avatar" }, h("img", { class: "sync-account-logo", src: "/lados-sync-logo.png", alt: "" })),
       h(
         "div",
         { class: "sync-account-id" },
