@@ -288,7 +288,7 @@ pub async fn sync_sign_out_everywhere(app: AppHandle) -> Result<AppStatus> {
 
 /// Lists the cloud vaults of the signed-in account.
 #[tauri::command]
-pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<crate::sync::CloudVault>> {
+pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<views::CloudVaultInfo>> {
     #[cfg(feature = "sync")]
     {
         run_blocking(move || {
@@ -310,7 +310,7 @@ pub async fn sync_cloud_vaults(app: AppHandle) -> Result<Vec<crate::sync::CloudV
                         .unwrap_or_else(|| "Encrypted vault".to_string());
                 }
             }
-            Ok(vaults)
+            Ok(vaults.into_iter().map(views::CloudVaultInfo::from).collect())
         })
         .await
     }

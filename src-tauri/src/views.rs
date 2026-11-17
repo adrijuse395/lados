@@ -94,6 +94,36 @@ pub struct LocalVaultView {
     pub key_file: Option<String>,
 }
 
+/// A cloud vault as listed by the server (metadata only, no contents).
+///
+/// Defined here rather than in the sync module so the command surface compiles with the `sync`
+/// feature off, where the sync module is absent.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVaultInfo {
+    pub id: String,
+    pub name: String,
+    /// The encrypted label; absent on vaults uploaded by older versions.
+    pub name_cipher: Option<String>,
+    pub vault_uuid: Option<String>,
+    pub version: u64,
+    pub updated_at: i64,
+}
+
+#[cfg(feature = "sync")]
+impl From<crate::sync::CloudVault> for CloudVaultInfo {
+    fn from(vault: crate::sync::CloudVault) -> Self {
+        CloudVaultInfo {
+            id: vault.id,
+            name: vault.name,
+            name_cipher: vault.name_cipher,
+            vault_uuid: vault.vault_uuid,
+            version: vault.version,
+            updated_at: vault.updated_at,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecentVaultView {
