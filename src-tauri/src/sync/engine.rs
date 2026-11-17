@@ -169,6 +169,16 @@ pub fn rekey(
 ) -> Result<(Option<Vault>, u64, VaultKey)> {
     let remote_now = remote.get(vault_id)?;
     let new_key = match (&remote_now, local_key) {
+        // Prefer whichever key carries a recovery wrap, for the same reason `sync` does: taking the
+        // cloud copy's key wholesale would silently drop this device's recovery key.
+        (Some(remote_vault), Some(key)) if key.has_recovery() => {
+            let from_cloud = key_either(&remote_vault.bytes, old_composite, new_composite)?;
+            if from_cloud.has_recovery() {
+                from_cloud.rewrap(new_composite, kdf)?
+            } else {
+                key.rewrap(new_composite, kdf)?
+            }
+        }
         (Some(remote_vault), _) => key_either(&remote_vault.bytes, old_composite, new_composite)?.rewrap(new_composite, kdf)?,
         (None, Some(key)) => key.rewrap(new_composite, kdf)?,
         (None, None) => VaultKey::generate(new_composite, kdf)?,
@@ -413,6 +423,38 @@ mod tests {
         let header = Header::parse(&cloud.bytes).unwrap();
         assert!(header.has_recovery(), "the wrap must reach the cloud copy");
         assert!(storage::key_from_recovery(&header, &cloud.bytes, &code).is_ok());
+    }
+
+    /// The same rule applies to a master-password change: it re-encrypts every vault, and it must
+    /// not use that as an excuse to drop a recovery wrap.
+    #[test]
+    fn a_password_change_keeps_the_wrap_when_the_cloud_copy_has_none() {
+        let remote = MemoryRemote::new();
+        let (old_composite, plain) = credentials();
+        let mut vault = Vault::new("Main").unwrap();
+        vault.add_entry(None, content("Mail", "1")).unwrap();
+
+        // The cloud copy is unwrapped — another device, or an older build, wrote it.
+        sync(&remote, "v1", &vault, &old_composite, &plain, None).unwrap();
+        let cloud = remote.get("v1").unwrap().unwrap();
+        assert_eq!(Header::parse(&cloud.bytes).unwrap().version, 1);
+
+        // This device has a recovery key for the vault.
+        let code = [9u8; 32];
+        let wrapped = plain.with_recovery(&old_composite, &code).unwrap();
+
+        let new_composite = composite_key("new-pw", None);
+        let (_, _, new_key) = rekey(
+            &remote,
+            "v1",
+            Some(&vault),
+            Some(&wrapped),
+            &old_composite,
+            &new_composite,
+            KdfParams::FOR_TESTS,
+        )
+        .unwrap();
+        assert!(new_key.has_recovery(), "a password change must not drop the recovery wrap");
     }
 
     #[test]
