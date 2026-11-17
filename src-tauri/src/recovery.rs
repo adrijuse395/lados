@@ -85,6 +85,8 @@ pub fn file_contents(vault: &str, code: &str) -> Zeroizing<String> {
          Keep this file somewhere safe, and away from the vault and its backups. Anyone who has\n\
          it can open the vault without the master password. Lados keeps no copy: if you lose\n\
          both this file and the password, the vault can no longer be opened.\n\n\
+         The key has no expiry and can be used as often as you need. Creating a new recovery\n\
+         key for this vault replaces it, and then this file stops working.\n\n\
          Recovery key\n\
          ------------\n\n\
          {code}\n"

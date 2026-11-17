@@ -31,7 +31,14 @@ export async function createRecoveryKeyDialog(): Promise<void> {
   if (!agreed) return;
 
   try {
-    const path = await backend.pickSavePath("recovery", "Save your recovery key", "Lados recovery key.txt");
+    // Name it after the vault. The likeliest mistake is using one vault's key on another, and the
+    // file name is the cheapest place to prevent it.
+    const vaultName = (store.status?.vaultFileName ?? "vault").replace(/\.lados$/i, "");
+    const path = await backend.pickSavePath(
+      "recovery",
+      "Save your recovery key",
+      `Lados recovery key (${vaultName}).txt`,
+    );
     if (!path) return;
     await backend.createRecoveryKey(path);
     await refreshStatus();
