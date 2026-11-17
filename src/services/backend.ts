@@ -16,6 +16,7 @@ import type {
   MergeReport,
   Preferences,
   RecentVault,
+  RecoveryCheckView,
   RecoveryKeyView,
   RecoveryView,
   RevisionSummary,
@@ -81,6 +82,8 @@ export const backend = {
   /** Opens every vault a recovery key covers, then re-encrypts them under a new password. */
   recoverVault: (recoveryFile: string, newPassword: string, newKeyFile: string | null) =>
     call<RecoveryView>("recover_vault", { recoveryFile, newPassword, newKeyFile }),
+  /** Checks a recovery key file against your vaults, without opening or changing anything. */
+  checkRecoveryKey: (recoveryFile: string) => call<RecoveryCheckView>("check_recovery_key", { recoveryFile }),
   getVaultView: () => call<VaultView>("get_vault_view"),
   renameVault: (name: string) => call<void>("rename_vault", { name }),
 

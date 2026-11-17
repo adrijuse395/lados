@@ -13,7 +13,7 @@ export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recover
  * in `src-tauri/src/commands/mod.rs`: when the running app process is older, the interface says so
  * plainly instead of failing with a puzzling error on the first call that needs something new.
  */
-export const API_REVISION = 2;
+export const API_REVISION = 3;
 
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {
@@ -171,6 +171,18 @@ export interface RecoveryView {
   uncovered: string[];
   /** Anything else the user should be told. */
   notice: string | null;
+}
+
+/** The outcome of checking a recovery key file against every vault it can reach. */
+export interface RecoveryCheckView {
+  /** The vaults this key opens, by name. */
+  opens: string[];
+  /** The vaults that carry a different recovery key (an older file was used for them). */
+  otherKey: string[];
+  /** The vaults that have no recovery key at all. */
+  noKey: string[];
+  /** Every vault that was checked is opened by this key. */
+  complete: boolean;
 }
 
 export type Icon = { kind: "builtin"; value: string } | { kind: "custom"; value: Uuid };

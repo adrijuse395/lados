@@ -62,6 +62,10 @@ instead of being narrower. It follows that the file is worth exactly what the pa
   master password**. Every vault the key covers is re-encrypted under it — the ones here and the
   account's cloud copies — and the same key keeps working. With a live session the account credential
   moves to the new password too, and the other devices are signed out.
+- **Check it:** vault menu → **Check a recovery key…** (also offered on the unlock screen). Point it
+  at a file and it says which vaults the key opens, which carry a **different** key, and which have
+  none — without opening or changing anything. That is how you know you are covered *before* the day
+  you need the key.
 
 ## What it does not do
 

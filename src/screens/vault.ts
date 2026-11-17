@@ -56,6 +56,7 @@ function openMoreMenu(anchor: HTMLElement): void {
       icon: "lock",
       onSelect: () => void actions.createRecoveryKey(),
     },
+    { label: "Check a recovery key…", icon: "shield", onSelect: () => void actions.checkRecoveryKey() },
     { label: "Settings…", icon: "settings", onSelect: () => void actions.showSettings() },
     { label: "Sync settings…", icon: "cloud", onSelect: () => void actions.showSyncCenter() },
     { label: "Find for URL…", icon: "search", onSelect: () => void actions.showUrlMatchTester() },

@@ -154,6 +154,7 @@ pub fn run() {
             commands::vault::change_master_key,
             commands::recovery::create_recovery_key,
             commands::recovery::recover_vault,
+            commands::recovery::check_recovery_key,
             commands::vault::get_vault_view,
             commands::vault::rename_vault,
             commands::vault::pick_open_path,

@@ -8,10 +8,11 @@
 import { refreshStatus, showStatus } from "../app";
 import { backend } from "../services/backend";
 import { store } from "../state/store";
+import type { RecoveryCheckView } from "../types";
 import { fileNameOf } from "../ui/controls";
-import { h } from "../ui/dom";
+import { h, type Child } from "../ui/dom";
 import { svgIcon } from "../ui/icons";
-import { confirmDialog } from "../ui/modal";
+import { alertDialog, confirmDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 import { credentialsDialog } from "./credentials";
 
@@ -153,4 +154,65 @@ export async function recoverWithKey(): Promise<void> {
   } catch (error) {
     toastError(error);
   }
+}
+
+/** Checks a recovery key file against your vaults, without opening or changing anything. */
+export async function checkRecoveryKeyDialog(): Promise<void> {
+  try {
+    const file = await backend.pickOpenPath("recovery", "Select a recovery key file to check");
+    if (!file) return;
+    const check = await backend.checkRecoveryKey(file);
+    await alertDialog("Recovery key check", checkBody(file, check));
+  } catch (error) {
+    toastError(error);
+  }
+}
+
+function checkList(title: string, names: string[]): Child | null {
+  if (names.length === 0) return null;
+  return h(
+    "div",
+    { class: "stack" },
+    h("p", { text: title }),
+    ...names.map((name) => h("p", { class: "muted", text: `• ${name}` })),
+  );
+}
+
+function checkBody(file: string, check: RecoveryCheckView): Child {
+  const total = check.opens.length + check.otherKey.length + check.noKey.length;
+  const verdict = check.complete
+    ? h(
+        "div",
+        { class: "notice" },
+        svgIcon("check"),
+        h("span", {
+          text: total === 1 ? "This key opens your vault." : `This key opens all ${total} of your vaults.`,
+        }),
+      )
+    : h(
+        "div",
+        { class: "notice warning" },
+        svgIcon("warning"),
+        h("span", {
+          text:
+            total === 0
+              ? "No vaults were found to check this key against."
+              : "This key does not cover every vault we found.",
+        }),
+      );
+  return h(
+    "div",
+    { class: "stack" },
+    h("p", { class: "muted", text: `Recovery key: ${fileNameOf(file)}` }),
+    verdict,
+    checkList("Opens these vaults:", check.opens),
+    checkList("Made with a different key — an older file covers these:", check.otherKey),
+    checkList("Has no recovery key at all:", check.noKey),
+    check.complete
+      ? null
+      : h("p", {
+          class: "muted",
+          text: "Open each vault and create a recovery key, so one file covers them all.",
+        }),
+  );
 }

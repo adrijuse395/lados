@@ -44,6 +44,21 @@ pub struct RecoveryView {
     pub notice: Option<String>,
 }
 
+/// The outcome of checking a recovery key file against every vault it can reach. Nothing is
+/// opened or changed: this only answers "does this file still open my vaults?".
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryCheckView {
+    /// The vaults this key opens, by name.
+    pub opens: Vec<String>,
+    /// The vaults that carry a *different* recovery key: an older file was used for them.
+    pub other_key: Vec<String>,
+    /// The vaults that have no recovery key at all.
+    pub no_key: Vec<String>,
+    /// Every vault that was inspected is opened by this key.
+    pub complete: bool,
+}
+
 // ----- Creating a recovery key -----
 
 /// Creates a recovery key for every vault the given master password opens and writes the file the
@@ -255,6 +270,76 @@ fn recover_one(path: &Path, code: &SecretKey, new_composite: &SecretKey, kdf: Kd
     Ok(())
 }
 
+// ----- Checking a recovery key -----
+
+/// Checks a recovery key file against every vault it can reach, without opening or changing
+/// anything. The point is to know *before* it is needed that the file on disk still opens the
+/// vaults it claims to.
+#[tauri::command]
+pub async fn check_recovery_key(app: AppHandle, recovery_file: String) -> Result<RecoveryCheckView> {
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        check_for_account(&state, &recovery_file)
+    })
+    .await
+}
+
+fn check_for_account(state: &AppState, recovery_file: &str) -> Result<RecoveryCheckView> {
+    let text = Zeroizing::new(String::from_utf8_lossy(&storage::read_file(Path::new(recovery_file))?).into_owned());
+    let code = recovery::parse_code(&text).ok_or_else(|| Error::invalid("That file does not hold a Lados recovery key"))?;
+
+    let mut check = RecoveryCheckView {
+        opens: Vec::new(),
+        other_key: Vec::new(),
+        no_key: Vec::new(),
+        complete: false,
+    };
+
+    for path in candidate_vaults(state) {
+        let Ok(bytes) = storage::read_file(&path) else {
+            continue;
+        };
+        let name = views::file_name(&path);
+        match wrap_state(&bytes, &code) {
+            WrapState::Opens => check.opens.push(name),
+            WrapState::Different => check.other_key.push(name),
+            WrapState::None => check.no_key.push(name),
+            WrapState::NotAVault => {}
+        }
+    }
+
+    #[cfg(feature = "sync")]
+    check_cloud(state, &code, &mut check);
+
+    check.complete = check.other_key.is_empty() && check.no_key.is_empty() && !check.opens.is_empty();
+    Ok(check)
+}
+
+/// How a vault file or blob relates to a recovery code.
+enum WrapState {
+    /// The code opens this vault.
+    Opens,
+    /// The vault has a recovery key, but a different one.
+    Different,
+    /// The vault has no recovery key at all.
+    None,
+    /// Not a Lados vault.
+    NotAVault,
+}
+
+fn wrap_state(bytes: &[u8], code: &SecretKey) -> WrapState {
+    let Ok(header) = storage::Header::parse(bytes) else {
+        return WrapState::NotAVault;
+    };
+    if !header.has_recovery() {
+        return WrapState::None;
+    }
+    match storage::key_from_recovery(&header, bytes, code) {
+        Ok(_) => WrapState::Opens,
+        Err(_) => WrapState::Different,
+    }
+}
+
 // ----- Cloud: reaching the copies that are not here -----
 
 /// Re-encrypts every cloud vault that carries this code under the new password, returning their
@@ -275,6 +360,53 @@ fn recover_cloud_vaults(state: &AppState, code: &SecretKey, new_composite: &Secr
         }
     }
     restored
+}
+
+/// Checks the account's cloud copies too, so a vault that is not on this device is not left out of
+/// the result. Best effort: a network problem simply leaves those copies unchecked.
+#[cfg(feature = "sync")]
+fn check_cloud(state: &AppState, code: &SecretKey, check: &mut RecoveryCheckView) {
+    use crate::sync::Remote;
+
+    let Some(account) = state.settings().sync_account.clone() else {
+        return;
+    };
+    let Ok(cloud) = crate::sync::list_vaults(&account.server_url, &account.token) else {
+        return;
+    };
+    let remote = crate::sync::HttpRemote::new(&account.server_url, &account.token);
+    let label_key = stored_label_key(state);
+
+    // Vaults already inspected as files here, so the same vault is not reported twice.
+    let local_ids: HashSet<String> = {
+        let settings = state.settings();
+        settings
+            .synced_vaults
+            .iter()
+            .filter(|entry| entry.path.is_file())
+            .map(|entry| entry.server_vault_id.clone())
+            .collect()
+    };
+
+    for vault in cloud {
+        if local_ids.contains(&vault.id) {
+            continue;
+        }
+        let Ok(Some(blob)) = remote.get(&vault.id) else {
+            continue;
+        };
+        let name = vault
+            .name_cipher
+            .as_ref()
+            .and_then(|cipher| label_key.as_ref().and_then(|key| crypto::open(key, cipher).ok()))
+            .unwrap_or_else(|| vault.name.clone());
+        match wrap_state(&blob.bytes, code) {
+            WrapState::Opens => check.opens.push(name),
+            WrapState::Different => check.other_key.push(name),
+            WrapState::None => check.no_key.push(name),
+            WrapState::NotAVault => {}
+        }
+    }
 }
 
 /// Gives the recovery wrap to every cloud copy, so the copies on other devices receive it too.
@@ -417,3 +549,40 @@ fn uncovered_synced(state: &AppState, covered: &[PathBuf]) -> Vec<String> {
         .map(|path| views::file_name(&path))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A vault file wrapped with `code`.
+    fn wrapped_with(code: &SecretKey) -> Vec<u8> {
+        let composite = crypto::composite_key("pw", None);
+        let key = VaultKey::generate(&composite, KdfParams::FOR_TESTS)
+            .unwrap()
+            .with_recovery(&composite, code)
+            .unwrap();
+        storage::encrypt_vault(&Vault::new("Test").unwrap(), &key).unwrap()
+    }
+
+    /// The checker must tell apart the three answers that matter: this key opens the vault, the
+    /// vault has *another* key, or it has none at all. Getting these wrong is what would let a user
+    /// believe they are covered when they are not.
+    #[test]
+    fn a_check_tells_apart_opening_a_different_key_and_no_key() {
+        let code = Zeroizing::new([3u8; 32]);
+        let other = Zeroizing::new([4u8; 32]);
+
+        assert!(matches!(wrap_state(&wrapped_with(&code), &code), WrapState::Opens));
+        assert!(matches!(wrap_state(&wrapped_with(&code), &other), WrapState::Different));
+
+        // A version-1 vault carries no recovery key at all.
+        let composite = crypto::composite_key("pw", None);
+        let plain = VaultKey::generate(&composite, KdfParams::FOR_TESTS).unwrap();
+        let version_one = storage::encrypt_vault(&Vault::new("Test").unwrap(), &plain).unwrap();
+        assert!(matches!(wrap_state(&version_one, &code), WrapState::None));
+
+        // Anything that is not a vault is ignored rather than reported.
+        assert!(matches!(wrap_state(b"not a vault", &code), WrapState::NotAVault));
+    }
+}
+

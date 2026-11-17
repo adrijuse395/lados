@@ -44,7 +44,7 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 /// Without it, a running process older than its interface fails with a confusing message on the
 /// first new call — which is what happens in development, where the dev server reloads the
 /// interface instantly while the app process only changes when it is restarted.
-pub const API_REVISION: u32 = 2;
+pub const API_REVISION: u32 = 3;
 
 pub mod account;
 pub mod billing;

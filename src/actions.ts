@@ -8,7 +8,7 @@ import { folderSelect, openEntryEditor } from "./dialogs/entry-editor";
 import { openFolderEditor } from "./dialogs/folder-editor";
 import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
-import { createRecoveryKeyDialog } from "./dialogs/recovery";
+import { checkRecoveryKeyDialog, createRecoveryKeyDialog } from "./dialogs/recovery";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
 import { openChangeMasterPassword, openSyncCenter } from "./dialogs/sync-center";
@@ -104,6 +104,12 @@ export const changeMasterKey = () =>
 export const createRecoveryKey = () =>
   attempt(async () => {
     await createRecoveryKeyDialog();
+  });
+
+/** Checks a recovery key file against your vaults, without recovering or changing anything. */
+export const checkRecoveryKey = () =>
+  attempt(async () => {
+    await checkRecoveryKeyDialog();
   });
 
 /** Signed-in users change the account master password, which re-encrypts every synced vault. */
