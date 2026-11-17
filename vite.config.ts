@@ -17,5 +17,9 @@ export default defineConfig({
     target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari15",
     minify: !process.env.TAURI_ENV_DEBUG,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    // `dist` is embedded into the shipped app, so it must never keep stale bundles or leftover
+    // sourcemaps from an earlier build. (Vite does this by default; saying it here means a change
+    // to the output paths cannot quietly turn it off.)
+    emptyOutDir: true,
   },
 });

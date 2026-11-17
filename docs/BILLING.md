@@ -293,23 +293,21 @@ of this is a *gestor* question — get one before the first payout.
 ### Going live (sandbox → live)
 
 Sandbox and live are **separate accounts** — separate sign-ups, logins, dashboards, data and
-credentials. Nothing is shared, so going live means recreating and swapping, not flipping a
-switch:
+credentials. Nothing is shared, so going live means recreating and swapping, not flipping a switch:
+the live account, its own product and price, its own API key, its own notification destination and
+its own client-side token, plus **approval of the selling domain** (live Paddle only loads the
+checkout on approved domains; the sandbox has no such gate).
 
-1. **Create the live account** at `vendors.paddle.com/signup`, using the **org/business identity**
-   (§2) — not a personal email — and complete **verification** (KYC). You cannot take money before
-   that is approved.
-2. **Recreate the catalog**: the product and price → a live `pri_…`.
-3. **Get the live credentials**: live API key, a live notification destination (copy its
-   `pdl_ntfset_…`), and a live client-side token.
-4. **Approve the checkout domain** — in live, the Paddle checkout only loads on domains approved in
-   the dashboard (request it there). Sandbox has no such gate.
-5. **Swap the values** (the code is identical):
-   - Worker secret `PADDLE_API_KEY` → live key
-   - Worker secret `PADDLE_WEBHOOK_SECRET` → live destination secret
-   - `wrangler.toml` `PADDLE_PRICE_ID` → live price
-   - `lados-web` `main.js` → live client token, and **remove** `Paddle.Environment.set("sandbox")`
-6. **Legal pages + seller identification** (§9) before the first real sale.
+**The step-by-step sequence, with the verification for each step and a rollback, is
+[`GO-LIVE.md`](./GO-LIVE.md).** Keep it as the checklist; this section stays the design.
+
+Two things that sequence matters for:
+
+- **Do not ship a release containing sync before the live credentials are in.** A release shipped
+  while the Worker still holds sandbox credentials shows real users a *test-mode* checkout they
+  cannot pay in. `sync` is off in `release.yml` precisely so this cannot happen by accident; turning
+  it on is the last step of the go-live, not a loose end.
+- **Legal pages and the seller identity come before the first real sale** (§9).
 
 ## 13. Decisions
 
