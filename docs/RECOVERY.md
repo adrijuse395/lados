@@ -34,6 +34,28 @@ a recovery key and find out too late that it was dead. With this design every pa
 (`VaultKey::rewrap`) re-wraps the *same* secret, so a file you already have keeps working. The tests
 in `storage.rs` pin that property down.
 
+## Scope: one key for the account, not one per vault
+
+A recovery code is not tied to a single vault. Each vault stores its own salt, nonce and wrap, so the
+**same code** can wrap the secret of every vault that shares your master password — that is what
+"one key per account" means here:
+
+- **Create** produces **one code** and applies it to the open vault plus **every synced vault on this
+  device**, with **one file** to keep.
+- **Recover** takes that file and restores **every** vault that carries the code: the ones on this
+  device, and — while a session is still valid — the cloud copies that are not here, pulled and
+  re-encrypted under the new master password.
+- It then re-registers the **account credential** with the new password and revokes the other
+  sessions, so recovery leaves you signed in and syncing: the same reach as a normal password change.
+
+The master password already opens all of those vaults, so the recovery key now matches its scope
+instead of being narrower. It follows that the file is worth exactly what the password is worth.
+
+*(A **local-only** vault may use a different password, so it keeps getting a key of its own.)*
+
+> Implementation status: the create side and the account-wide recovery are being built. Until they
+> land, a key covers the single vault it was made for.
+
 ## Using it
 
 - **Create:** vault menu → **Create a recovery key…** → choose where to save the file.
