@@ -212,7 +212,9 @@ export async function openSettings(): Promise<void> {
       h(
         "p",
         { class: "settings-about" },
-        `Lados ${store.status?.appVersion ?? ""} · Vaults are encrypted with XChaCha20-Poly1305 and a key derived with Argon2id.`,
+        `Lados ${store.status?.appVersion ?? ""} · build ${
+          store.status?.builtAt ? new Date(store.status.builtAt).toLocaleString() : "unknown"
+        } · Vaults are encrypted with XChaCha20-Poly1305 and a key derived with Argon2id.`,
       ),
     ),
     hideCancel: true,

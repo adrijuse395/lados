@@ -36,7 +36,16 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 
 // The command surface is split by what it is about. Each module below re-uses the imports and the
 // helpers declared here with `use super::*`, so this file stays the shared base of the whole
-// surface � and no single file grows without bound.
+// surface - and no single file grows without bound.
+
+/// Bumped whenever a command's arguments or results change shape.
+///
+/// The interface carries the same number (`API_REVISION` in `src/types.ts`) and compares the two.
+/// Without it, a running process older than its interface fails with a confusing message on the
+/// first new call — which is what happens in development, where the dev server reloads the
+/// interface instantly while the app process only changes when it is restarted.
+pub const API_REVISION: u32 = 1;
+
 pub mod account;
 pub mod billing;
 pub mod entries;

@@ -34,6 +34,11 @@ pub struct AppStatus {
     pub preferences: Preferences,
     pub recent_vaults: Vec<RecentVaultView>,
     pub app_version: &'static str,
+    /// The revision of the command surface this binary exposes. The interface carries its own and
+    /// warns when the running process is older (see `commands::API_REVISION`).
+    pub api_revision: u32,
+    /// When the running executable was last written, in Unix milliseconds: which build am I running?
+    pub built_at: u64,
     /// Whether the open vault can also be opened with a recovery key.
     pub has_recovery_key: bool,
     /// Cloud sync state: whether the user is signed in and whether this vault syncs.

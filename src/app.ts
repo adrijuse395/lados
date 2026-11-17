@@ -7,6 +7,7 @@ import { clearAutofillCache, syncAutofillCache } from "./services/autofill-bridg
 import { BackendError, backend } from "./services/backend";
 import { resetVaultState, setVault, store } from "./state/store";
 import type { AppStatus, MergeReport, Theme } from "./types";
+import { API_REVISION } from "./types";
 import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
 import { errorMessage, toast } from "./ui/toast";
@@ -85,10 +86,25 @@ export async function performSync(): Promise<MergeReport> {
   }
 }
 
+/** Warns once when the running process is an older build than this interface, which otherwise
+ *  shows up as a baffling error on the first call to a command or argument that did not exist yet. */
+let warnedAboutStaleBuild = false;
+
+function warnIfStaleBuild(status: AppStatus): void {
+  if (warnedAboutStaleBuild || status.apiRevision >= API_REVISION) return;
+  warnedAboutStaleBuild = true;
+  toast(
+    "This Lados process is older than its interface, so new features will fail. Close the app and start it again.",
+    "error",
+    15000,
+  );
+}
+
 /** Shows the screen that matches the session state reported by the core. */
 export async function showStatus(status: AppStatus): Promise<void> {
   const previous = store.status;
   store.status = status;
+  warnIfStaleBuild(status);
   applyTheme(status.preferences.theme);
 
   if (status.state === "unlocked") {

@@ -8,6 +8,13 @@ export type Theme = "system" | "light" | "dark";
 export type LockReason = "user" | "inactivity" | "tray";
 export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recovery";
 
+/**
+ * The revision of the command surface this interface needs. Keep it in step with `API_REVISION`
+ * in `src-tauri/src/commands/mod.rs`: when the running app process is older, the interface says so
+ * plainly instead of failing with a puzzling error on the first call that needs something new.
+ */
+export const API_REVISION = 1;
+
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {
   firefox: boolean;
@@ -80,6 +87,10 @@ export interface AppStatus {
   preferences: Preferences;
   recentVaults: RecentVault[];
   appVersion: string;
+  /** The revision of the command surface the running app process exposes. */
+  apiRevision: number;
+  /** When the running app was built, in Unix milliseconds (0 when unknown). */
+  builtAt: number;
   /** Whether the open vault can also be opened with a recovery key. */
   hasRecoveryKey: boolean;
   /** Cloud sync state. */

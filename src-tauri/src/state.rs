@@ -60,6 +60,18 @@ pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// When the running executable was last written, in Unix milliseconds: "which build am I running?"
+/// without having to inspect the binary by hand.
+fn built_at() -> u64 {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| std::fs::metadata(path).ok())
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 pub struct AppState {
     config_dir: PathBuf,
     session: Mutex<Session>,
@@ -145,6 +157,8 @@ impl AppState {
                 .map(|recent| RecentVaultView::new(recent, settings.synced_vault(&recent.path)))
                 .collect(),
             app_version: env!("CARGO_PKG_VERSION"),
+            api_revision: crate::commands::API_REVISION,
+            built_at: built_at(),
             has_recovery_key,
             sync: {
                 let account = settings.sync_account.as_ref();

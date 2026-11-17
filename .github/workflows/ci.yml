@@ -69,11 +69,18 @@ jobs:
       # mojibake, which then ships inside user-visible strings. Catch it here, not in review.
       - name: No mojibake in the sources
         run: |
+          bad=0
           if git grep -I -n 'â€' -- . ':!package-lock.json'; then
             echo "::error::A file was re-encoded through a legacy codepage. Rewrite it as UTF-8."
-            exit 1
+            bad=1
           fi
-          echo "Looks clean."
+          # U+FFFD in source is never meaningful: it means a character was lost in translation.
+          if git grep -I -n -P '\xef\xbf\xbd' -- . ':!package-lock.json'; then
+            echo "::error::A replacement character (U+FFFD) was written into a source file."
+            bad=1
+          fi
+          [ $bad -eq 0 ] && echo "Looks clean."
+          exit $bad
 
   extension:
     name: Extension
