@@ -23,10 +23,14 @@ Mark a box only when you have the evidence shown next to it.
 
 - [ ] **Verification (KYC)** submitted and **approved** for the business identity.
       *Done when:* the dashboard stops saying the account is unverified.
-- [ ] **Checkout domain approved** for the domain you sell from (`ladospwm.vercel.app`, or your own
-      domain once you have it). Live Paddle only loads the checkout on approved domains; the sandbox
-      has no such gate.
-      *Done when:* the domain shows as approved in *Checkout → Website approval*.
+- [ ] **Checkout domain approved** for the domain you sell from — **My account → Settings → Website
+      approval** → *Add a new domain* → *Submit for Approval*. Most are approved automatically; a
+      manual review is quoted at **5–7 business days**, so submit early. Sandbox approves
+      automatically; live does not, and **checkout will not open on an unapproved domain**.
+      *Done when:* the domain shows as approved (dashboard, or the **List checkout domains** API).
+      *Paddle checks the site itself:* a clear description of the product, **pricing**, the key
+      features, and **Terms + refund policy + privacy reachable from the navigation** — see Phase 2,
+      which must therefore be done *first*.
 - [ ] **Payout / bank details** filled in.
 - [ ] **Product + price created in live**: the live twin of “Lados Sync”, €12/year, VAT included.
       *Write down the live `pri_…`* — it is not secret, and Phase 3 needs it.
@@ -39,14 +43,16 @@ Mark a box only when you have the evidence shown next to it.
 
 ## Phase 2 — the legal pages go live
 
+- [x] A **pricing section** on the site, and **Terms / Refunds / Privacy** linked from every footer.
+      Paddle's domain review checks for both, so this had to land before the domain is submitted.
+      *(Done in `lados-web` `e99ff46`.)*
 - [ ] `[LEGAL NAME]`, `[NIF/CIF]`, `[ADDRESS]`, `[CONTACT EMAIL]` filled in
       `lados-web/terms.html`, and the `BEFORE THIS PAGE GOES LIVE` comment removed.
+      ⚠️ **The Terms page is already linked from the live site, so the placeholders are publicly
+      visible until this is done.**
 - [ ] …and the same details reviewed by a gestor or lawyer **before** real money is taken.
-- [ ] The **Terms** link added to the footer of `lados-web` (`index.html`, `privacy.html`,
-      `terms.html`) — they are deliberately unlinked while the placeholders are in.
-- [ ] The site deployed, and `https://<domain>/terms` loads.
-      *Done when:* the URL resolves and shows the real seller identity.
-- [ ] Both URLs pasted into Paddle (Terms, and the refund section).
+- [ ] The site deployed and `https://<domain>/terms` shows the real seller identity.
+- [ ] Both URLs pasted into Paddle: the Terms, and `/terms#refunds` as the refund policy.
 
 ## Phase 3 — swap the credentials
 
