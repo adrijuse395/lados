@@ -109,7 +109,7 @@ impl VaultFile {
         let new_key = if self.key.matches(&header) {
             None
         } else {
-            match VaultKey::for_header(&self.composite, &header) {
+            match VaultKey::for_header(&self.composite, &header, &bytes) {
                 Ok(key) => Some(key),
                 Err(Error::Corrupted) => return Ok(DiskChange::Unreadable),
                 Err(other) => return Err(other),
@@ -201,7 +201,7 @@ impl OpenVault {
     pub fn open(path: PathBuf, composite: SecretKey) -> Result<Self> {
         let bytes = storage::read_file(&path)?;
         let header = Header::parse(&bytes)?;
-        let key = VaultKey::for_header(&composite, &header)?;
+        let key = VaultKey::for_header(&composite, &header, &bytes)?;
         let vault = storage::decrypt_vault(&bytes, &key)?;
         Ok(OpenVault {
             vault,
@@ -220,6 +220,17 @@ impl OpenVault {
     /// The hashed credentials, to try them on another vault file.
     pub fn composite(&self) -> SecretKey {
         self.file.composite.clone()
+    }
+
+    /// The key the vault is currently encrypted with.
+    pub fn key(&self) -> &VaultKey {
+        &self.file.key
+    }
+
+    /// Re-encrypts the vault for new credentials, keeping any recovery key working.
+    pub fn rekey(&mut self, composite: SecretKey, kdf: KdfParams) -> Result<SaveOutcome> {
+        let key = self.file.key.rewrap(&composite, kdf)?;
+        self.change_key(composite, key)
     }
 
     /// Applies a change and saves it. If the change or the save fails, the vault in memory and
@@ -334,7 +345,7 @@ impl OpenVault {
 pub fn read_other(path: &Path, composite: &SecretKey) -> Result<Zeroizing<Vault>> {
     let bytes = storage::read_file(path)?;
     let header = Header::parse(&bytes)?;
-    let key = VaultKey::for_header(composite, &header)?;
+    let key = VaultKey::for_header(composite, &header, &bytes)?;
     Ok(Zeroizing::new(storage::decrypt_vault(&bytes, &key)?))
 }
 

@@ -6,7 +6,7 @@
 //! brand-new device (empty vault under the same master password) can decrypt and adopt
 //! the vault's salt simply by syncing.
 
-use crate::crypto::SecretKey;
+use crate::crypto::{KdfParams, SecretKey};
 use crate::error::{Error, Result};
 use crate::merge::{self, MergeReport};
 use crate::models::Vault;
@@ -35,7 +35,7 @@ pub struct SyncOutcome {
 /// credentials. This is what lets any device open the synced vault.
 fn key_for(composite: &SecretKey, bytes: &[u8]) -> Result<VaultKey> {
     let header = Header::parse(bytes)?;
-    VaultKey::for_header(composite, &header)
+    VaultKey::for_header(composite, &header, bytes)
 }
 
 fn decrypt(key: &VaultKey, remote: &RemoteVault) -> Result<Vault> {
@@ -135,17 +135,27 @@ pub fn sync(
 /// Re-encrypts one synced vault under a new master password, folding in the current cloud copy
 /// first. The cloud copy (and a local copy left over from an interrupted run) is decrypted with
 /// whichever of the two credentials opens it, so a retry still works. The server still only ever
-/// sees ciphertext. Returns the merged vault (when there is one) and the cloud version it ended at.
+/// sees ciphertext. Returns the merged vault (when there is one), the cloud version it ended at,
+/// and the key the vault was written with.
+///
+/// The new key is a **re-wrap** of the vault's own secret, never a fresh one, so a recovery key
+/// created for this vault keeps working after the password change.
 #[cfg(feature = "sync")]
 pub fn rekey(
     remote: &dyn Remote,
     vault_id: &str,
     local: Option<&Vault>,
+    local_key: Option<&VaultKey>,
     old_composite: &SecretKey,
     new_composite: &SecretKey,
-    new_key: &VaultKey,
-) -> Result<(Option<Vault>, u64)> {
+    kdf: KdfParams,
+) -> Result<(Option<Vault>, u64, VaultKey)> {
     let remote_now = remote.get(vault_id)?;
+    let new_key = match (&remote_now, local_key) {
+        (Some(remote_vault), _) => key_either(&remote_vault.bytes, old_composite, new_composite)?.rewrap(new_composite, kdf)?,
+        (None, Some(key)) => key.rewrap(new_composite, kdf)?,
+        (None, None) => VaultKey::generate(new_composite, kdf)?,
+    };
 
     let remote_plain = match &remote_now {
         Some(remote_vault) => Some(decrypt_either(&remote_vault.bytes, old_composite, new_composite)?),
@@ -160,25 +170,34 @@ pub fn rekey(
     };
 
     let Some(merged) = merged else {
-        return Ok((None, remote_now.map(|vault| vault.version).unwrap_or(0)));
+        return Ok((None, remote_now.map(|vault| vault.version).unwrap_or(0), new_key));
     };
 
     let base = remote_now.as_ref().map(|vault| vault.version);
-    let bytes = storage::encrypt_vault(&merged, new_key)?;
+    let bytes = storage::encrypt_vault(&merged, &new_key)?;
     match remote.put(vault_id, base, &bytes)? {
-        PutOutcome::Stored { version } => Ok((Some(merged), version)),
+        PutOutcome::Stored { version } => Ok((Some(merged), version, new_key)),
         PutOutcome::Conflict { current } => {
             // Someone wrote first; their copy carries either the old or the new credentials.
             let their_plain = decrypt_either(&current.bytes, old_composite, new_composite)?;
             let outcome = merge::merge(&merged, &their_plain);
-            let bytes = storage::encrypt_vault(&outcome.vault, new_key)?;
+            let bytes = storage::encrypt_vault(&outcome.vault, &new_key)?;
             match remote.put(vault_id, Some(current.version), &bytes)? {
-                PutOutcome::Stored { version } => Ok((Some(outcome.vault), version)),
+                PutOutcome::Stored { version } => Ok((Some(outcome.vault), version, new_key)),
                 PutOutcome::Conflict { .. } => Err(Error::invalid(
                     "The vault changed again while the master password was being changed; please retry",
                 )),
             }
         }
+    }
+}
+
+/// The key of a blob under whichever of the two credentials it carries.
+#[cfg(feature = "sync")]
+fn key_either(bytes: &[u8], old_composite: &SecretKey, new_composite: &SecretKey) -> Result<VaultKey> {
+    match key_for(old_composite, bytes) {
+        Ok(key) => Ok(key),
+        Err(_) => key_for(new_composite, bytes),
     }
 }
 
@@ -361,9 +380,16 @@ mod tests {
         sync(&remote, "v1", &vault, &old_composite, &old_key, None).unwrap();
 
         let new_composite = composite_key("new-pw", None);
-        let new_key = VaultKey::generate(&new_composite, KdfParams::FOR_TESTS).unwrap();
-        let (merged, version) =
-            rekey(&remote, "v1", Some(&vault), &old_composite, &new_composite, &new_key).unwrap();
+        let (merged, version, _new_key) = rekey(
+            &remote,
+            "v1",
+            Some(&vault),
+            Some(&old_key),
+            &old_composite,
+            &new_composite,
+            KdfParams::FOR_TESTS,
+        )
+        .unwrap();
         assert_eq!(merged.unwrap().entries.len(), 1);
         assert!(version >= 1);
 
@@ -384,10 +410,17 @@ mod tests {
         sync(&remote, "v1", &vault, &old_composite, &old_key, None).unwrap();
 
         let new_composite = composite_key("new-pw", None);
-        let new_key = VaultKey::generate(&new_composite, KdfParams::FOR_TESTS).unwrap();
         // No local copy at all: it is still re-encrypted from its ciphertext alone.
-        let (merged, _version) =
-            rekey(&remote, "v1", None, &old_composite, &new_composite, &new_key).unwrap();
+        let (merged, _version, _new_key) = rekey(
+            &remote,
+            "v1",
+            None,
+            None,
+            &old_composite,
+            &new_composite,
+            KdfParams::FOR_TESTS,
+        )
+        .unwrap();
         assert_eq!(merged.unwrap().entries.len(), 1);
 
         let stored = remote.get("v1").unwrap().unwrap();
