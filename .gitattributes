@@ -1,0 +1,19 @@
+# Line endings are normalized to LF in the working tree, whatever the platform, so a Windows
+# checkout cannot turn every file into a whole-file diff. The stored blobs do not change.
+* text=auto eol=lf
+
+# Binaries are never touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.wasm binary
+*.zip binary
+*.xpi binary
+*.exe binary
+*.dll binary
+*.dylib binary
+*.so binary

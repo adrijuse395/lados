@@ -1,0 +1,14 @@
+# The sources are UTF-8 with LF endings. Tools that guess otherwise are how a file quietly turns
+# into mojibake (see the CI "Text" job), so tell them instead of letting them guess.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+
+[*.rs]
+indent_size = 4
+
+[*.{ts,js,mjs,cjs,css,html,json,yml,yaml,md,sh,py,toml}]
+indent_size = 2

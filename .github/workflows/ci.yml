@@ -58,6 +58,23 @@ jobs:
 
       - run: npm run typecheck
 
+  text:
+    name: Text
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      # The sources are UTF-8. A tool that reads and writes them through a legacy codepage (Windows
+      # PowerShell's Get-Content/Set-Content, for one) turns every em-dash and curly quote into
+      # mojibake, which then ships inside user-visible strings. Catch it here, not in review.
+      - name: No mojibake in the sources
+        run: |
+          if git grep -I -n 'â€' -- . ':!package-lock.json'; then
+            echo "::error::A file was re-encoded through a legacy codepage. Rewrite it as UTF-8."
+            exit 1
+          fi
+          echo "Looks clean."
+
   extension:
     name: Extension
     runs-on: ubuntu-24.04

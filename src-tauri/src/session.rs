@@ -459,6 +459,37 @@ mod tests {
     }
 
     #[test]
+    fn a_recovery_key_created_for_an_open_vault_reopens_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.lados");
+        let composite = composite_key("pw", None);
+        // Created in one session, then reopened, as the app does before a recovery key is made.
+        {
+            let mut open = OpenVault::create(path.clone(), "Test", composite.clone(), KdfParams::FOR_TESTS).unwrap();
+            open.modify(|vault| vault.add_entry(None, content("Mail"))).unwrap();
+        }
+        let mut open = OpenVault::open(path.clone(), composite.clone()).unwrap();
+
+        // Exactly what `create_recovery_key` does: give the vault a wrap, then save it again.
+        let code = [3u8; 32];
+        let key = open.key().with_recovery(&composite, &code).unwrap();
+        open.change_key(composite.clone(), key).unwrap();
+
+        // The file is version 2 with a recovery wrap, and the previous one was kept.
+        let bytes = std::fs::read(&path).unwrap();
+        let header = Header::parse(&bytes).unwrap();
+        assert_eq!(header.version, 2);
+        assert!(header.has_recovery());
+        assert!(dir.path().join("vault.lados.bak").exists());
+
+        // The password still opens it, and so does the code on its own.
+        let with_password = VaultKey::for_header(&composite, &header, &bytes).unwrap();
+        assert_eq!(storage::decrypt_vault(&bytes, &with_password).unwrap().entries.len(), 1);
+        let recovered = storage::key_from_recovery(&header, &bytes, &code).unwrap();
+        assert_eq!(storage::decrypt_vault(&bytes, &recovered).unwrap().entries.len(), 1);
+    }
+
+    #[test]
     fn other_vault_files_can_be_merged_in() {
         let dir = tempfile::tempdir().unwrap();
         let mut main = create(dir.path(), "pw");
