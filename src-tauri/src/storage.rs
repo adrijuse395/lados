@@ -177,6 +177,9 @@ impl Header {
     }
 }
 
+/// A recovery wrap: the salt and nonce, and the vault secret sealed under the recovery key.
+type RecoveryWrap = ([u8; SALT_LEN], [u8; NONCE_LEN], Vec<u8>);
+
 /// The key material of a version-2 file: a random secret plus the wraps that protect it.
 #[derive(Clone)]
 struct Wrapping {
@@ -185,8 +188,8 @@ struct Wrapping {
     nonce: [u8; NONCE_LEN],
     /// The secret, encrypted under the password key.
     wrap: Vec<u8>,
-    /// The same secret, encrypted under the recovery key: salt, nonce, ciphertext.
-    recovery: Option<([u8; SALT_LEN], [u8; NONCE_LEN], Vec<u8>)>,
+    /// The same secret, encrypted under the recovery key.
+    recovery: Option<RecoveryWrap>,
 }
 
 /// The key that encrypts a vault, plus everything needed to write a matching header.
@@ -348,7 +351,7 @@ fn wrap_secret(kek: &SecretKey, nonce: &[u8; NONCE_LEN], sealed: &[u8]) -> Resul
 }
 
 /// Reads the recovery wrap of a version-2 file, if it has one.
-fn read_recovery(header: &Header, bytes: &[u8]) -> Result<Option<([u8; SALT_LEN], [u8; NONCE_LEN], Vec<u8>)>> {
+fn read_recovery(header: &Header, bytes: &[u8]) -> Result<Option<RecoveryWrap>> {
     if !header.has_recovery() {
         return Ok(None);
     }

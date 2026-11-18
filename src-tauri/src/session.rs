@@ -44,7 +44,9 @@ enum DiskChange {
         stamp: Option<FileStamp>,
         /// Another window re-encrypted the file with the same credentials but a new salt or
         /// cost. This window must adopt that key, or its next save would undo the change.
-        new_key: Option<VaultKey>,
+        /// Boxed: `VaultKey` is far larger than the other variants, and this value is local and
+        /// short-lived.
+        new_key: Option<Box<VaultKey>>,
     },
     Unreadable,
 }
@@ -110,12 +112,12 @@ impl VaultFile {
             None
         } else {
             match VaultKey::for_header(&self.composite, &header, &bytes) {
-                Ok(key) => Some(key),
+                Ok(key) => Some(Box::new(key)),
                 Err(Error::Corrupted) => return Ok(DiskChange::Unreadable),
                 Err(other) => return Err(other),
             }
         };
-        match storage::decrypt_vault(&bytes, new_key.as_ref().unwrap_or(&self.key)) {
+        match storage::decrypt_vault(&bytes, new_key.as_deref().unwrap_or(&self.key)) {
             Ok(remote) => Ok(DiskChange::Readable {
                 remote: Box::new(Zeroizing::new(remote)),
                 hash,
@@ -149,7 +151,7 @@ impl VaultFile {
             DiskChange::Unreadable => target = storage::conflict_copy_path(&self.path),
         }
 
-        let key = new_key.as_ref().map(|(_, key)| key).or(adopted.as_ref()).unwrap_or(&self.key);
+        let key = new_key.as_ref().map(|(_, key)| key).or(adopted.as_deref()).unwrap_or(&self.key);
         let bytes = storage::encrypt_vault(vault, key)?;
         let diverged = target != self.path;
         if !self.backup_done && !diverged {
@@ -166,7 +168,7 @@ impl VaultFile {
             self.composite = composite;
             self.key = key;
         } else if let Some(key) = adopted {
-            self.key = key;
+            self.key = *key;
         }
         self.remember(&bytes);
         Ok(outcome)
@@ -307,7 +309,7 @@ impl OpenVault {
                 new_key,
             } => {
                 if let Some(key) = new_key {
-                    self.file.key = key;
+                    self.file.key = *key;
                 }
                 let merged = merge::merge(&self.vault, &remote);
                 let mut combined = Zeroizing::new(merged.vault);

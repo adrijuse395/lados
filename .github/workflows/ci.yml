@@ -70,7 +70,8 @@ jobs:
       - name: No mojibake in the sources
         run: |
           bad=0
-          if git grep -I -n 'â€' -- . ':!package-lock.json'; then
+          # The pattern is written as hex escapes so this line cannot match itself.
+          if git grep -I -n -P '\xc3\xa2\xe2\x82\xac' -- . ':!package-lock.json'; then
             echo "::error::A file was re-encoded through a legacy codepage. Rewrite it as UTF-8."
             bad=1
           fi

@@ -154,7 +154,7 @@ mod tests {
     fn a_hex_vault_name_is_not_mistaken_for_the_code() {
         let (code, _key) = generate().unwrap();
         let hex_name = "A".repeat(CODE_CHARS);
-        let file = file_contents(&[hex_name.clone()], None, &code);
+        let file = file_contents(std::slice::from_ref(&hex_name), None, &code);
         let parsed = parse_code(&file).expect("the real code must win");
         let expected = decode(&code).expect("the generated code is well formed");
         assert_eq!(&parsed[..], &expected[..]);
