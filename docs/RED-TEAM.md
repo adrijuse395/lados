@@ -196,6 +196,9 @@ instead.
 Stated so the agents do not rediscover by design:
 
 - **No password reset.** There is none, on purpose; recovery is via the recovery key.
+- **A synced vault must use the account's master password.** A vault encrypted with a different
+  password is refused when sync is enabled ("use *Change master key*"). That is by design, not a
+  finding. The seeded accounts have no vault, so create one with the account's password.
 - **`/admin/comp` returns 404** unless `ADMIN_TOKEN` is set. On staging it is not set.
 - **The server never sees the master password** (OPAQUE) and never sees vault plaintext.
 - **Being rate-limited (`429`) is expected.** It is only a finding if the limit is trivially
