@@ -36,6 +36,9 @@ logic (paywall, `402`, quota, comp), **session/token** handling, **enumeration**
 - **Client (optional):** most of your work is HTTP against `<STAGING_URL>` — that needs no app. If you
   also want to drive the desktop app and extension, see *Obtaining the client* below.
 - **Source:** the repository is public — **read it**. That is part of being a realistic attacker.
+- **Getting a bearer token (for direct API work):** either sign in through the app and read the token
+  from its local settings file, **or** script the OPAQUE handshake with `@serenity-kit/opaque` — the
+  public repo's `sync-server/scripts/opaque-e2e.mjs` is a working example that takes a `BASE_URL`.
 
 ### Obtaining the client
 
