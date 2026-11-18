@@ -52,7 +52,7 @@ PADDLE_PRICE_ID = "pri_01m7jfrjx7shwpnwpgccvkqhzn"   # sandbox "Lados Sync"; swa
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "lados-sync-staging"
-database_id = "REPLACE_WITH_STAGING_D1_ID"
+database_id = "60547cad-d667-4cd4-9ce3-0564a716c7b2"
 
 [[env.staging.r2_buckets]]
 binding = "BLOBS"
