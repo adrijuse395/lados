@@ -27,3 +27,33 @@ TOKEN_TTL_SECONDS = "2592000"   # 30 days
 # Optional admin token; enables /admin/comp (free accounts for family, friends…):
 #   wrangler secret put ADMIN_TOKEN
 PADDLE_PRICE_ID = "pri_01m7jfrjx7shwpnwpgccvkqhzn"   # sandbox "Lados Sync" 12 EUR/year
+
+# ----- Staging / red-team environment ---------------------------------------
+# A completely separate Worker with its own D1 database and R2 bucket, so security testing never
+# touches the data the app ships with. Build a client that points at it with:
+#   LADOS_SYNC_SERVER=https://lados-sync-staging.<subdomain>.workers.dev \
+#     LADOS_CHANNEL=staging npx tauri build --bundles nsis --features sync
+#
+# One-time setup, then deploy:
+#   npx wrangler d1 create lados-sync-staging            # paste the id below
+#   npx wrangler r2 bucket create lados-sync-staging-blobs
+#   npx wrangler d1 execute lados-sync-staging --file=./schema.sql --remote
+#   npx wrangler secret put OPAQUE_SERVER_SETUP --env staging   # a NEW setup, never production's
+#   npx wrangler secret put PADDLE_API_KEY      --env staging   # Paddle SANDBOX key
+#   npx wrangler secret put PADDLE_WEBHOOK_SECRET --env staging # staging destination secret
+#   npx wrangler deploy --env staging
+[env.staging]
+name = "lados-sync-staging"
+
+[env.staging.vars]
+TOKEN_TTL_SECONDS = "2592000"
+PADDLE_PRICE_ID = "pri_01m7jfrjx7shwpnwpgccvkqhzn"   # sandbox "Lados Sync"; swap for live at go-live
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "lados-sync-staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"
+
+[[env.staging.r2_buckets]]
+binding = "BLOBS"
+bucket_name = "lados-sync-staging-blobs"

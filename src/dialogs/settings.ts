@@ -6,6 +6,7 @@ import { preferences, store } from "../state/store";
 import type { Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
+import { svgIcon } from "../ui/icons";
 import { showDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 
@@ -195,25 +196,38 @@ export async function openSettings(): Promise<void> {
         "section",
         { class: "settings-section" },
         h("h3", { text: "Updates" }),
-        h(
-          "p",
-          { class: "muted", text: "Vault files never leave this computer. Optional update checks only contact GitHub Releases." },
-        ),
-        h(
-          "button",
-          {
-            type: "button",
-            class: "button",
-            onClick: () => void checkForAppUpdateInteractive().catch(toastError),
-          },
-          "Check for updates",
-        ),
+        store.status?.channel
+          ? h(
+              "div",
+              { class: "notice warning" },
+              svgIcon("warning"),
+              h("span", {
+                text: `This is a ${store.status.channel} test build, so updates are disabled: it must stay pointed at its test server.`,
+              }),
+            )
+          : h("p", {
+              class: "muted",
+              text: "Vault files never leave this computer. Optional update checks only contact GitHub Releases.",
+            }),
+        store.status?.channel
+          ? null
+          : h(
+              "button",
+              {
+                type: "button",
+                class: "button",
+                onClick: () => void checkForAppUpdateInteractive().catch(toastError),
+              },
+              "Check for updates",
+            ),
       ),
       h(
         "p",
         { class: "settings-about" },
         `Lados ${store.status?.appVersion ?? ""} · build ${
           store.status?.builtAt ? new Date(store.status.builtAt).toLocaleString() : "unknown"
+        }${
+          store.status?.channel ? ` · ${store.status.channel} · ${store.status.syncServer ?? ""}` : ""
         } · Vaults are encrypted with XChaCha20-Poly1305 and a key derived with Argon2id.`,
       ),
     ),

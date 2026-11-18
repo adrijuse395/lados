@@ -76,8 +76,9 @@ async function start(): Promise<void> {
       .then((status) => showStatus(status))
       .catch(() => undefined);
   }
-  // Do not block startup on the network; offer an update only when one exists.
-  void maybeOfferAppUpdate();
+  // Do not block startup on the network; offer an update only when one exists. A marked test build
+  // skips this entirely: it must never replace itself with a released build.
+  if (!store.status?.channel) void maybeOfferAppUpdate();
 }
 
 start().catch((error: unknown) => {

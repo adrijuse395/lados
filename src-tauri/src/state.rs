@@ -72,6 +72,22 @@ fn built_at() -> u64 {
         .unwrap_or(0)
 }
 
+/// Set at build time to mark a non-release build (`LADOS_CHANNEL=staging`). The interface shows it
+/// and skips the updater, so a test build can never be mistaken for — or silently replaced by — a
+/// released one.
+pub const BUILD_CHANNEL: Option<&str> = option_env!("LADOS_CHANNEL");
+
+/// The sync server this build signs in to, for the interface to show on a marked build.
+#[cfg(feature = "sync")]
+fn sync_server() -> Option<&'static str> {
+    Some(crate::sync::DEFAULT_SERVER)
+}
+
+#[cfg(not(feature = "sync"))]
+fn sync_server() -> Option<&'static str> {
+    None
+}
+
 pub struct AppState {
     config_dir: PathBuf,
     session: Mutex<Session>,
@@ -159,6 +175,8 @@ impl AppState {
             app_version: env!("CARGO_PKG_VERSION"),
             api_revision: crate::commands::API_REVISION,
             built_at: built_at(),
+            channel: BUILD_CHANNEL,
+            sync_server: sync_server(),
             has_recovery_key,
             sync: {
                 let account = settings.sync_account.as_ref();

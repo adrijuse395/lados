@@ -91,6 +91,10 @@ export interface AppStatus {
   apiRevision: number;
   /** When the running app was built, in Unix milliseconds (0 when unknown). */
   builtAt: number;
+  /** Set only on non-release builds (for example "staging"); null on normal builds. */
+  channel: string | null;
+  /** The sync server this build signs in to; shown on a marked build. */
+  syncServer: string | null;
   /** Whether the open vault can also be opened with a recovery key. */
   hasRecoveryKey: boolean;
   /** Cloud sync state. */

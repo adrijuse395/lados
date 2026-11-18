@@ -39,6 +39,12 @@ pub struct AppStatus {
     pub api_revision: u32,
     /// When the running executable was last written, in Unix milliseconds: which build am I running?
     pub built_at: u64,
+    /// Set only on non-release builds (for example `"staging"`); `None` on normal builds. The
+    /// interface shows it, and skips the updater so a test build cannot replace itself with a
+    /// released one.
+    pub channel: Option<&'static str>,
+    /// The sync server this build signs in to; shown on a marked build so the target is obvious.
+    pub sync_server: Option<&'static str>,
     /// Whether the open vault can also be opened with a recovery key.
     pub has_recovery_key: bool,
     /// Cloud sync state: whether the user is signed in and whether this vault syncs.

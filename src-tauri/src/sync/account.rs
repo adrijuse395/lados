@@ -13,7 +13,14 @@ use crate::error::{Error, Result};
 use super::http::{self, Response};
 
 /// Default hosted server. Stored per account so self-hosting can point elsewhere.
-pub const DEFAULT_SERVER: &str = "https://lados-sync.ladospwm.workers.dev";
+///
+/// A build can target another deployment — a staging server for testing, or a self-hosted one —
+/// with `LADOS_SYNC_SERVER=https://… cargo build`. It is baked in at compile time, so a released
+/// binary can never be redirected at runtime, and this default stays the production URL.
+pub const DEFAULT_SERVER: &str = match option_env!("LADOS_SYNC_SERVER") {
+    Some(url) => url,
+    None => "https://lados-sync.ladospwm.workers.dev",
+};
 
 /// The secret that authenticates the account: Argon2id over the master credentials, salted
 /// per account (email), domain-separated from the vault key. Returned as lowercase hex.
