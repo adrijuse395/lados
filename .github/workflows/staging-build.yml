@@ -1,0 +1,96 @@
+name: Staging build
+
+# Builds a Lados client that points at the **staging** server, for the pre-release security
+# assessment (docs/RED-TEAM.md). Manual only:
+#
+#   GitHub → Actions → Staging build → Run workflow
+#
+# It creates (or updates) a **pre-release** tagged `staging` with the installers, so a test bot
+# can download the asset for its platform — Linux, Windows or macOS — without a local toolchain.
+#
+# This never runs on a push and never touches the release pipeline (`release.yml` is tag-driven).
+
+on:
+  workflow_dispatch:
+    inputs:
+      server:
+        description: "Sync server the build targets (staging only)"
+        required: true
+        default: "https://lados-sync-staging.ladospwm.workers.dev"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: staging-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            platform: ubuntu-22.04
+            args: ""
+          - name: windows
+            platform: windows-latest
+            args: ""
+          - name: macos-aarch64
+            platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+          - name: macos-x86_64
+            platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and upload (staging)
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Baked into the binary at compile time. Staging only — a default build would target
+          # production. See src-tauri/src/sync/account.rs.
+          LADOS_SYNC_SERVER: ${{ inputs.server }}
+          LADOS_CHANNEL: staging
+        with:
+          tagName: staging
+          releaseName: "Lados — staging test build"
+          releaseBody: |
+            **This is a test build, not a release.** It targets the staging sync server, is marked
+            `staging` in Settings, and has its in-app updater disabled on purpose.
+
+            Do **not** put real passwords in it. See `red-team/README-TESTING.md`.
+          releaseDraft: false
+          prerelease: true
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }} --features sync --config .github/staging.conf.json

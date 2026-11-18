@@ -88,21 +88,32 @@ comment block there. **Generate a new `OPAQUE_SERVER_SETUP` for staging** — ne
 
 ### 4.2 The client build that points at staging
 
-The sync server URL is baked in at compile time; a normal build always targets production. The
-staging build sets two values:
+**Easiest — let CI build it.** GitHub → **Actions → Staging build → Run workflow**. It produces
+Linux, Windows and macOS installers and attaches them to a **pre-release** tagged `staging`
+(`.github/workflows/staging-build.yml`). Nothing local is needed, and the testing machine's OS does
+not matter. It is manual-only and never touches the release pipeline.
+
+**Or build locally.** The sync server URL is baked in at compile time, so a normal build always
+targets production; the staging build must set two values:
 
 ```powershell
-$env:LADOS_SYNC_SERVER = "https://lados-sync-staging.<subdomain>.workers.dev"
+$env:LADOS_SYNC_SERVER = "https://lados-sync-staging.ladospwm.workers.dev"
 $env:LADOS_CHANNEL    = "staging"
-npx tauri build --bundles nsis --features sync      # or the platform's bundle
+npx tauri build --bundles nsis --features sync --config '{"bundle":{"createUpdaterArtifacts":false}}'
 ```
 
 - `LADOS_SYNC_SERVER` points the app at staging.
 - `LADOS_CHANNEL=staging` marks the build: the UI shows it, and the **in-app updater is disabled**,
   so a test build can never quietly replace itself with a released one.
 
+**Verify it:** the compiled binary must contain the staging URL and **not** the production one. The
+in-app **Settings** shows `staging` and the server.
+
 **Deliver it** as a **GitHub pre-release** (clearly marked *pre-release*), or a short-lived private
 link. It is **not** a release and must never look like one.
+
+> The agents **cannot choose** the sandbox at runtime — there is no switch. The server is compiled
+> in. That is why the pre-release is the safe delivery: a bot installing it cannot reach production.
 
 ### 4.3 Test accounts and data
 
