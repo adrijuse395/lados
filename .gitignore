@@ -38,6 +38,9 @@ sync-server/.wrangler/
 .dev.vars
 .tauri-secrets/
 
+# Red-team run: staging URLs and test credentials stay out of the public repo
+red-team/local.md
+
 # Vaults, key files, and other local secrets (never commit real data)
 *.lados
 *.kdbx
