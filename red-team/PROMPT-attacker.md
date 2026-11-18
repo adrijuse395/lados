@@ -33,9 +33,31 @@ logic (paywall, `402`, quota, comp), **session/token** handling, **enumeration**
 - **Test accounts:** `<TEST_ACCOUNT_EMAIL>` / `<TEST_ACCOUNT_PASSWORD>`, and a second account
   `<TEST_ACCOUNT_2_EMAIL>` / `<TEST_ACCOUNT_2_PASSWORD>` for cross-account tests. Create more if
   useful.
-- **Client:** the staging build attached to this task (points at the staging server; marked
-  `staging`). The extension is `browser-extension/build/lados-chrome.zip` (load unpacked).
+- **Client (optional):** most of your work is HTTP against `<STAGING_URL>` — that needs no app. If you
+  also want to drive the desktop app and extension, see *Obtaining the client* below.
 - **Source:** the repository is public — **read it**. That is part of being a realistic attacker.
+
+### Obtaining the client
+
+You do **not** need the app to attack the API: `curl` / scripts / a proxy against `<STAGING_URL>` is
+the main path. If you also want the app and the extension, note there is **no "sandbox" switch** — the
+server is compiled into the build, so use one made for staging:
+
+1. **Pre-release build (preferred):** `<PRE_RELEASE_URL>`
+   - Windows x64: `Lados_0.2.1-staging_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
+   - No asset for your platform? Use option 2.
+2. **Build from source** (the repository is public):
+
+   ```bash
+   git clone https://github.com/ladospwm/lados.git && cd lados
+   npm install
+   LADOS_SYNC_SERVER=<STAGING_URL> LADOS_CHANNEL=staging npx tauri build --features sync
+   ```
+
+   **Do not build without both values** — a default build points at the *production* server.
+
+**Verify the target before using the app:** Settings must show **`staging`** and the staging URL; if
+not, **stop**. For raw HTTP you are already aimed at `<STAGING_URL>`.
 
 ### The API you may probe (staging only)
 

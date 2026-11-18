@@ -28,15 +28,39 @@ source repository is public, so you may read it.
 
 ## 2. Your environment
 
-- **App:** the **staging build** attached to this task (a pre-release, not a shipping release).
-  Install it on a fresh machine or VM.
-  - It points at the staging server and is marked `staging` in Settings. The **in-app updater is
-    disabled** in this build — that is expected.
+- **The app:** you need a build that points at the **staging** server — see *Obtaining the client* below.
 - **Extension:** `browser-extension/build/lados-chrome.zip`. Load it **unpacked**
   (`chrome://extensions` → Developer mode → Load unpacked).
 - **Test account:** `<TEST_ACCOUNT_EMAIL>` / `<TEST_ACCOUNT_PASSWORD>` (given to you separately).
   Register additional accounts freely if you need them.
 - **Staging server:** `<STAGING_URL>` — this is the only server you may use.
+
+### Obtaining the client
+
+There is **no "sandbox" switch in the app**: the server is compiled into the build, so you need one
+that was built *for staging*. Two ways to get it:
+
+1. **Pre-release build (preferred).** Download the asset for your platform from:
+   `<PRE_RELEASE_URL>`
+   - Windows x64: `Lados_0.2.1-staging_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
+   - If no asset matches your platform, use option 2.
+2. **Build from source** (the repository is public, so this is realistic):
+
+   ```bash
+   git clone https://github.com/ladospwm/lados.git && cd lados
+   npm install
+   LADOS_SYNC_SERVER=<STAGING_URL> LADOS_CHANNEL=staging npx tauri build --features sync
+   ```
+
+   On Windows PowerShell, set the two variables first:
+   `$env:LADOS_SYNC_SERVER = "<STAGING_URL>"` and `$env:LADOS_CHANNEL = "staging"`.
+
+   **Do not build without both values** — a default build points at the *production* server.
+
+**Verify the target before you do anything else.** Open **Settings**: it must show **`staging`** and
+the staging server URL. If it shows anything else, **stop** — that build is pointed at production and
+must not be used. (The server is remembered per account at sign-in, so use a fresh machine or profile,
+or sign out first.)
 
 ## 3. Rules (do not cross)
 
