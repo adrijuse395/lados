@@ -47,7 +47,10 @@ the main path. If you also want the app and the extension, note there is **no "s
 server is compiled into the build, so use one made for staging:
 
 1. **Pre-release build (preferred):** `<PRE_RELEASE_URL>`
-   - Windows x64: `Lados_0.2.1-staging_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
+   - **Linux:** `Lados_0.2.1_amd64.deb` (Debian/Ubuntu) or `Lados_0.2.1_amd64.AppImage`. The app is a
+     **GUI**, so on a headless machine run it under `xvfb-run -a …`; if FUSE is missing, use
+     `--appimage-extract-and-run`.
+   - **Windows:** `Lados_0.2.1_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
    - No asset for your platform? Use option 2.
 2. **Build from source** (the repository is public):
 

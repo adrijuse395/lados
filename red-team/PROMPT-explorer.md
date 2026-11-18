@@ -42,7 +42,12 @@ that was built *for staging*. Two ways to get it:
 
 1. **Pre-release build (preferred).** Download the asset for your platform from:
    `<PRE_RELEASE_URL>`
-   - Windows x64: `Lados_0.2.1-staging_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
+   - **Linux:** `Lados_0.2.1_amd64.deb` (Debian/Ubuntu) or `Lados_0.2.1_amd64.AppImage`.
+     The app is a **GUI**: on a headless machine it needs a virtual display, so run it under
+     `xvfb-run`, e.g. `xvfb-run -a ./Lados_0.2.1_amd64.AppImage --appimage-extract-and-run`
+     (or install the `.deb` and run `xvfb-run -a lados`). The AppImage needs FUSE; if it is missing,
+     `--appimage-extract-and-run` avoids it.
+   - **Windows:** `Lados_0.2.1_x64-setup.exe` — unsigned, so SmartScreen will warn (expected).
    - If no asset matches your platform, use option 2.
 2. **Build from source** (the repository is public, so this is realistic):
 

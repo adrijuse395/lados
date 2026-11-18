@@ -13,18 +13,31 @@
 - Your vault stays encrypted on this machine. Sync, if you turn it on, uploads only opaque
   ciphertext to the staging server.
 
-## Install and run (Windows x64)
+## Install and run
 
-1. Run `Lados_0.2.1-staging_x64-setup.exe`.
-   *It is not code-signed, so Windows SmartScreen will warn — expected for a test build.*
-2. Launch Lados and create a vault with a **throwaway** master password.
-3. To exercise sync: **Sync settings** → sign in with the account you were given.
+| Platform | Asset |
+| --- | --- |
+| **Linux** | `Lados_0.2.1_amd64.deb` (Debian/Ubuntu) or `Lados_0.2.1_amd64.AppImage` |
+| **Windows** | `Lados_0.2.1_x64-setup.exe` (unsigned — SmartScreen will warn; expected) |
+
+The app is a **GUI**. On a headless Linux machine it needs a virtual display:
+
+```bash
+xvfb-run -a ./Lados_0.2.1_amd64.AppImage --appimage-extract-and-run
+# or, after installing the .deb:  xvfb-run -a lados
+```
+
+Then:
+
+1. Launch Lados and create a vault with a **throwaway** master password.
+2. To exercise sync: **Sync settings** → sign in with the account you were given.
 
 ## The browser extension
 
 - `lados-chrome.zip` — load it unpacked: `chrome://extensions` → **Developer mode** → **Load
   unpacked** → pick the extracted folder.
 - It talks only to `127.0.0.1:18765`, so it needs this app running with the vault **unlocked**.
+- On a headless machine the browser also needs a virtual display.
 
 ## Credentials
 
