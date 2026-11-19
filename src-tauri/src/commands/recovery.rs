@@ -270,8 +270,57 @@ fn recover_one(path: &Path, code: &SecretKey, new_composite: &SecretKey, kdf: Kd
     Ok(())
 }
 
-// ----- Checking a recovery key -----
+// ----- What a key would touch (shown before anything is written) -----
 
+/// The vaults a recovery key covers, by file name. Shown to the user *before* any vault is
+/// re-encrypted, because a key can reach vaults in folders the user has forgotten about.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryTargetsView {
+    pub vaults: Vec<String>,
+}
+
+/// Every vault this device would re-encrypt if a recovery key were made now: the ones the open
+/// vault's master password opens.
+#[tauri::command]
+pub async fn recovery_key_targets(app: AppHandle) -> Result<RecoveryTargetsView> {
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let composite = state.with_vault(|open| Ok(open.composite()))?;
+        let mut vaults = Vec::new();
+        for path in candidate_vaults(&state) {
+            if vault_key_for(&path, &composite).is_ok() {
+                vaults.push(views::file_name(&path));
+            }
+        }
+        Ok(RecoveryTargetsView { vaults })
+    })
+    .await
+}
+
+/// Every vault on this device that a recovery key file can open.
+#[tauri::command]
+pub async fn recovery_file_targets(app: AppHandle, recovery_file: String) -> Result<RecoveryTargetsView> {
+    run_blocking(move || {
+        let state = app.state::<AppState>();
+        let text = Zeroizing::new(String::from_utf8_lossy(&storage::read_file(Path::new(&recovery_file))?).into_owned());
+        let code = recovery::parse_code(&text).ok_or_else(|| Error::invalid("That file does not hold a Lados recovery key"))?;
+
+        let mut vaults = Vec::new();
+        for path in candidate_vaults(&state) {
+            let Ok(bytes) = storage::read_file(&path) else {
+                continue;
+            };
+            if matches!(wrap_state(&bytes, &code), WrapState::Opens) {
+                vaults.push(views::file_name(&path));
+            }
+        }
+        Ok(RecoveryTargetsView { vaults })
+    })
+    .await
+}
+
+// ----- Checking a recovery key -----
 /// Checks a recovery key file against every vault it can reach, without opening or changing
 /// anything. The point is to know *before* it is needed that the file on disk still opens the
 /// vaults it claims to.

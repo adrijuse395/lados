@@ -158,6 +158,8 @@ pub fn run() {
             commands::recovery::create_recovery_key,
             commands::recovery::recover_vault,
             commands::recovery::check_recovery_key,
+            commands::recovery::recovery_key_targets,
+            commands::recovery::recovery_file_targets,
             commands::autofill::autofill_pairing_token,
             commands::autofill::autofill_answer,
             commands::vault::get_vault_view,

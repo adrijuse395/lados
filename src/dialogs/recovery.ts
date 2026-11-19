@@ -27,15 +27,37 @@ function scope(synced: boolean): string {
     : "It will be added to every vault on this device that your master password opens.";
 }
 
+/** Lists, by file name, the vaults a flow is about to re-encrypt. */
+function targetsList(verb: string, vaults: string[]): Child | null {
+  if (vaults.length === 0) return null;
+  return h(
+    "div",
+    { class: "stack" },
+    h("p", { text: `${verb} ${vaults.length === 1 ? "1 vault" : `${vaults.length} vaults`}:` }),
+    ...vaults.map((name) => h("p", { class: "muted", text: `• ${name}` })),
+  );
+}
+
 /** Creates one recovery key covering every vault the master password opens, saving the file. */
 export async function createRecoveryKeyDialog(): Promise<void> {
   const synced = store.status?.sync.loggedIn ?? false;
   const replacing = store.status?.hasRecoveryKey ?? false;
+  // Name every file that will be re-encrypted, before anything is written: a key reaches vaults in
+  // folders the user may have forgotten about (the red-team report, H2).
+  const targets = await backend.recoveryKeyTargets().catch(() => null);
   const agreed = await confirmDialog({
     title: replacing ? "Replace the recovery key?" : "Create a recovery key",
-    message: replacing
-      ? `A new recovery key replaces the one you have: the file you keep now stops working. ${scope(synced)} ${KEEP_IT_SAFE}`
-      : `A recovery key is a long code, kept in a file, that opens your vaults if you ever forget the master password. ${scope(synced)} ${KEEP_IT_SAFE}`,
+    message: h(
+      "div",
+      { class: "stack" },
+      h("p", {
+        text: replacing
+          ? `A new recovery key replaces the one you have: the file you keep now stops working. ${scope(synced)}`
+          : `A recovery key is a long code, kept in a file, that opens your vaults if you ever forget the master password. ${scope(synced)}`,
+      }),
+      targets ? targetsList("It will re-encrypt", targets.vaults) : null,
+      h("p", { class: "muted", text: KEEP_IT_SAFE }),
+    ),
     confirmLabel: replacing ? "Replace it" : "Continue",
     danger: replacing,
   });
@@ -96,6 +118,18 @@ export async function recoverWithKey(): Promise<void> {
     const file = await backend.pickOpenPath("recovery", "Select your recovery key file");
     if (!file) return;
 
+    // Say what this key reaches on this device before asking for the new password, and stop early
+    // when it reaches nothing.
+    const targets = await backend.recoveryFileTargets(file).catch(() => null);
+    if (targets && targets.vaults.length === 0) {
+      toast(
+        "This recovery key does not open any vault on this device. It was made for a different account, or for a copy from before the key existed.",
+        "error",
+        12000,
+      );
+      return;
+    }
+
     const synced = store.status?.sync.loggedIn ?? false;
     const result = await credentialsDialog({
       title: "Set a new master password",
@@ -108,6 +142,7 @@ export async function recoverWithKey(): Promise<void> {
             "working, so keep the file you have.",
         }),
         h("p", { class: "muted", text: `Recovery key: ${fileNameOf(file)}` }),
+        targets ? targetsList("It will re-encrypt", targets.vaults) : null,
         h("p", {
           class: "muted",
           text: "The key file below belongs to the new password — leave it empty unless you want to use one.",

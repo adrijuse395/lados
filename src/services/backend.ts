@@ -18,6 +18,7 @@ import type {
   RecentVault,
   RecoveryCheckView,
   RecoveryKeyView,
+  RecoveryTargetsView,
   RecoveryView,
   RevisionSummary,
   SyncView,
@@ -84,6 +85,11 @@ export const backend = {
     call<RecoveryView>("recover_vault", { recoveryFile, newPassword, newKeyFile }),
   /** Checks a recovery key file against your vaults, without opening or changing anything. */
   checkRecoveryKey: (recoveryFile: string) => call<RecoveryCheckView>("check_recovery_key", { recoveryFile }),
+  /** The vaults a new recovery key would cover, shown before anything is written. */
+  recoveryKeyTargets: () => call<RecoveryTargetsView>("recovery_key_targets"),
+  /** The vaults the chosen recovery key file can open on this device. */
+  recoveryFileTargets: (recoveryFile: string) =>
+    call<RecoveryTargetsView>("recovery_file_targets", { recoveryFile }),
 
   // Browser autofill bridge
   /** The pairing code the extension must be given. Pass `reset` to replace it. */

@@ -191,7 +191,12 @@ export interface RecoveryView {
   notice: string | null;
 }
 
-/** The outcome of checking a recovery key file against every vault it can reach. */
+/** The vaults a recovery key covers, by file name. */
+export interface RecoveryTargetsView {
+  vaults: string[];
+}
+
+/** The outcome of checking a recovery key file against every vault it can reach, changing nothing. */
 export interface RecoveryCheckView {
   /** The vaults this key opens, by name. */
   opens: string[];
