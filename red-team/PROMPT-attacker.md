@@ -83,7 +83,28 @@ not, **stop**. For raw HTTP you are already aimed at `<STAGING_URL>`.
 | POST | `/billing/webhook` | signed by Paddle |
 | GET | `/health` | |
 
-## 3. Rules (do not cross)
+## 3. First, verify the previous round's fixes
+
+These landed after the first report. **Confirm or refute each**, then move on to the attack. A
+regression here is a finding.
+
+| Was | Check |
+| --- | --- |
+| **C1** — a web page could read entries | From a **sandboxed iframe** (`Origin: null`) and from a plain page, request `/v1/entries`. Both must be refused (`403`), and the page must see nothing. |
+| **H1** — any local program could read passwords | `curl` to `/v1/entries` with **no pairing header** → `403`. With the code from Settings ▸ Browser pairing → answers, but `/v1/reveal` must **wait for an Allow click in the app**. Try to obtain a password without that click. |
+| **M1** — raw OPAQUE error on sign-in | Wrong password → “Incorrect email or password…”, **not** `System error: OPAQUE protocol error`. |
+| **M2** — leftover key file | Sign in with a **vault** key file selected in the Key file field of an account that has none → the message should point at the account's key file. |
+| **M9** — truncated file read as a wrong password | Truncate a `.lados` file and open it with the right password → “damaged or incomplete”, **not** “wrong password”. |
+| **M12 / M13** — corrupt CSV imports | A Latin-1 (`Cañón`) CSV → refused. An unclosed quote → reported, not imported as one entry. |
+| **L5** — `.txt` forced, temp folder | Create a recovery key named `x.key` → it must **not** become `x.key.txt`; the dialog must not open in an AppImage temp path. |
+| **L6** — check-dialog wording | “Check a recovery key” must say *Uses a different key*, not “an older file”. |
+| **L18** — stale “Sync failed” chip | Delete the account → the chip must clear. |
+| **H2** — silent re-encryption of many vaults | Creating **and** using a key must **list every file it will change before writing**, and an existing `.bak` must survive a second run. |
+| **H4** — unsaved entry lost on auto-lock | Type an entry, let auto-lock fire, unlock → you are asked to carry on, and the text is there. |
+| **M8** — deleted file recreated silently | Delete the open `.lados` file, edit → a notice names the file that was saved again. |
+| **H3** — valid KeePass file rejected | Import a `.kdbx` whose `<String>` comes **after** `<AutoType>` (the previous fixture) → it must import. |
+
+## 4. Rules (do not cross)
 
 1. **Staging only.** Never the production server (`lados-sync.*`), Cloudflare itself, any mail
    provider, or Paddle production.
@@ -96,7 +117,7 @@ not, **stop**. For raw HTTP you are already aimed at `<STAGING_URL>`.
    technique cannot be stopped once started.
 6. **No finding without a reproduction.** Say "could not verify" rather than speculate.
 
-## 4. Objectives — try to actually achieve these
+## 5. Objectives — try to actually achieve these
 
 Work through them; a negative result is also a result. For each, keep the exact requests.
 
@@ -145,7 +166,7 @@ Work through them; a negative result is also a result. For each, keep the exact 
 **Dependency and supply chain (light touch)**
 - Anything obviously outdated or misconfigured in the public source. Report, do not fix.
 
-## 5. Report format
+## 6. Report format
 
 For each finding:
 
@@ -171,6 +192,6 @@ the **top three** risks.
 Rank findings by **real impact**, not cleverness. A theoretical issue you could not reproduce is
 "informational" at best.
 
-## 6. Deliverable
+## 7. Deliverable
 
 One Markdown report, most severe first. Include the raw evidence for anything rated medium or above.
