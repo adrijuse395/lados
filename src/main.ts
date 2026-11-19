@@ -63,6 +63,21 @@ async function start(): Promise<void> {
     syncError(message) {
       toast(`The vault could not be synchronized: ${message}`, "error", 6000);
     },
+    vaultMissing(path) {
+      void alertDialog(
+        "The vault file was deleted or moved",
+        h(
+          "div",
+          { class: "stack" },
+          h("p", { text: "Lados found the vault file gone, and saved your changes again at:" }),
+          h("p", { class: "path-box", text: path }),
+          h("p", {
+            class: "muted",
+            text: "If you meant to remove this vault, close it and delete that file.",
+          }),
+        ),
+      );
+    },
     clipboardCleared() {
       toast("The clipboard was cleared");
     },

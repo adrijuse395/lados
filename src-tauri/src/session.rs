@@ -23,6 +23,8 @@ pub struct SaveOutcome {
     /// The file had been replaced by one this window cannot read (another master key, a newer
     /// version of Lados...). It was left untouched and this window's vault was saved next to it.
     pub conflict_copy: Option<PathBuf>,
+    /// The file had been deleted or moved away, and was written again at the same path.
+    pub missing: bool,
 }
 
 pub enum SyncOutcome {
@@ -31,6 +33,8 @@ pub enum SyncOutcome {
     Merged { report: MergeReport, local_changed: bool },
     /// The file can no longer be read: this window now works on the copy at this path.
     Diverged(PathBuf),
+    /// The file is gone: deleted, renamed or moved while the vault was open.
+    Missing,
 }
 
 /// How the file differs from what this window last read or wrote.
@@ -38,6 +42,8 @@ enum DiskChange {
     None,
     /// Same content with a new timestamp.
     Touched(Option<FileStamp>),
+    /// The file is gone: deleted, renamed or moved while this vault was open.
+    Missing,
     Readable {
         remote: Box<Zeroizing<Vault>>,
         hash: [u8; 32],
@@ -91,8 +97,12 @@ impl VaultFile {
     /// only record the time with a two-second precision.
     fn check_disk(&self, trust_stamp: bool) -> Result<DiskChange> {
         let stamp = storage::file_stamp(&self.path);
-        // A missing file is simply written again by the next save.
-        if stamp.is_none() || (trust_stamp && stamp == self.disk_stamp) {
+        // The file is gone: someone deleted or moved it. That is not "nothing happened" — the user
+        // is told (see `vault-missing`), because a deliberate deletion was being quietly undone.
+        if stamp.is_none() {
+            return Ok(DiskChange::Missing);
+        }
+        if trust_stamp && stamp == self.disk_stamp {
             return Ok(DiskChange::None);
         }
         let bytes = match std::fs::read(&self.path) {
@@ -140,6 +150,7 @@ impl VaultFile {
         let mut adopted = None;
         match self.check_disk(false)? {
             DiskChange::None | DiskChange::Touched(_) => {}
+            DiskChange::Missing => outcome.missing = true,
             DiskChange::Readable { remote, new_key: disk_key, .. } => {
                 let merged = merge::merge(vault, &remote);
                 if merged.local_changed {
@@ -302,6 +313,7 @@ impl OpenVault {
                 self.file.disk_stamp = stamp;
                 Ok(SyncOutcome::Unchanged)
             }
+            DiskChange::Missing => Ok(SyncOutcome::Missing),
             DiskChange::Readable {
                 remote,
                 hash,
@@ -508,5 +520,21 @@ mod tests {
         let (report, _) = main.merge_from(&remote).unwrap();
         assert_eq!(report.entries_added, 1);
         assert_eq!(main.vault().entries.len(), 1);
+    }
+
+    /// A file deleted while the vault is open must not be recreated in silence: the poll reports it
+    /// and a later save says so too (the interface shows `vault-missing`).
+    #[test]
+    fn a_deleted_file_is_reported_instead_of_being_recreated_in_silence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = create(dir.path(), "pw").path().to_path_buf();
+        let mut open = OpenVault::open(path.clone(), composite_key("pw", None)).unwrap();
+
+        std::fs::remove_file(&path).unwrap();
+        assert!(matches!(open.sync().unwrap(), SyncOutcome::Missing));
+
+        let (_, outcome) = open.modify(|vault| vault.add_entry(None, content("After delete"))).unwrap();
+        assert!(outcome.missing, "the caller must be told the file had gone");
+        assert!(path.is_file(), "the change is still saved, at the same path");
     }
 }

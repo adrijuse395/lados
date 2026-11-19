@@ -108,6 +108,11 @@ fn report_save(app: &AppHandle, state: &AppState, previous_path: &Path, outcome:
         remember_copy(state, previous_path, copy);
         let _ = app.emit("vault-diverged", views::path_text(copy));
     }
+    if outcome.missing {
+        // The file had been deleted or moved; the change was written again at the same path, and
+        // the user is told rather than left to discover it.
+        let _ = app.emit("vault-missing", views::path_text(previous_path));
+    }
 }
 
 /// Applies a change to the unlocked vault and saves it.

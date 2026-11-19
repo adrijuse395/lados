@@ -2,6 +2,7 @@
 //! inactivity, clear the clipboard when its time is up and pick up changes that other
 //! Lados windows saved to the same file.
 
+use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -20,6 +21,7 @@ pub fn start(app: AppHandle) {
     thread::spawn(move || {
         let mut last_sync = Instant::now();
         let mut last_error: Option<String> = None;
+        let mut last_missing: Option<PathBuf> = None;
         loop {
             thread::sleep(TICK);
             let state = app.state::<AppState>();
@@ -30,7 +32,7 @@ pub fn start(app: AppHandle) {
             lock_if_idle(&app, &state);
             if last_sync.elapsed() >= SYNC_INTERVAL {
                 last_sync = Instant::now();
-                sync(&app, &state, &mut last_error);
+                sync(&app, &state, &mut last_error, &mut last_missing);
             }
         }
     });
@@ -44,7 +46,12 @@ fn lock_if_idle(app: &AppHandle, state: &AppState) {
 }
 
 /// Each distinct error is reported once, so a file that stays unreadable does not flood the user.
-fn sync(app: &AppHandle, state: &AppState, last_error: &mut Option<String>) {
+fn sync(
+    app: &AppHandle,
+    state: &AppState,
+    last_error: &mut Option<String>,
+    last_missing: &mut Option<PathBuf>,
+) {
     let (previous_path, result) = {
         let mut session = state.session();
         let Session::Unlocked(open) = &mut *session else {
@@ -64,6 +71,13 @@ fn sync(app: &AppHandle, state: &AppState, last_error: &mut Option<String>) {
             commands::remember_copy(state, &previous_path, &copy);
             let _ = app.emit("vault-diverged", path_text(&copy));
         }
+        // Reported once per file: the poll runs every two seconds and must not nag.
+        Ok(SyncOutcome::Missing) => {
+            if last_missing.as_deref() != Some(previous_path.as_path()) {
+                let _ = app.emit("vault-missing", path_text(&previous_path));
+                *last_missing = Some(previous_path);
+            }
+        }
         Err(error) => {
             let message = error.to_string();
             if last_error.as_deref() != Some(message.as_str()) {
@@ -74,4 +88,5 @@ fn sync(app: &AppHandle, state: &AppState, last_error: &mut Option<String>) {
         }
     }
     *last_error = None;
+    *last_missing = None;
 }
