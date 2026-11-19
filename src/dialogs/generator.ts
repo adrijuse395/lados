@@ -84,10 +84,15 @@ export async function openGenerator(options: { pick?: boolean } = {}): Promise<s
     value: String(settings.length),
   });
   const setLength = (value: number, source: HTMLInputElement) => {
-    if (!Number.isFinite(value)) return;
+    if (!Number.isFinite(value)) {
+      // Put the last good value back, instead of leaving "-5ab" on screen (L11).
+      lengthNumber.value = String(settings.length);
+      return;
+    }
     settings.length = Math.min(MAX_LENGTH, Math.max(MIN_LENGTH, Math.round(value)));
     if (source !== lengthRange) lengthRange.value = String(settings.length);
-    if (source !== lengthNumber) lengthNumber.value = String(settings.length);
+    // Always correct the box, so a typed 9999 shows 128 rather than claiming to be 9999 (L11).
+    lengthNumber.value = String(settings.length);
     changed();
   };
   lengthRange.addEventListener("input", () => setLength(Number(lengthRange.value), lengthRange));
@@ -204,7 +209,9 @@ export async function openGenerator(options: { pick?: boolean } = {}): Promise<s
       h("div", { class: "generated-box" }, output, iconButton("refresh", "Generate another", () => void regenerate())),
       meter.element,
       h("div", { class: "field" }, h("span", { class: "field-label", text: "Length" }), h("div", { class: "length-row" }, lengthRange, lengthNumber)),
+      h("p", { class: "field-hint", text: `${MIN_LENGTH} to ${MAX_LENGTH} characters.` }),
       h("div", { class: "field" }, h("span", { class: "field-label", text: "Characters" }), h("div", { class: "checkbox-grid" }, classBoxes)),
+      h("p", { class: "field-hint", text: "At least one kind of character has to stay on." }),
       ambiguous.element,
       h(
         "details",

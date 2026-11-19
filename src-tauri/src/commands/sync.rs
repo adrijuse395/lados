@@ -29,7 +29,7 @@ fn remember_account(state: &AppState, base: &str, token: &str) {
 #[cfg(feature = "sync")]
 fn wrong_master_password() -> Error {
     Error::invalid(
-        "This vault uses a different master password. Synced vaults must use your sync master password — use “Change master key” to set it, then sync again.",
+        "This vault uses a different master password. Synced vaults must use your sync master password — use “Change master password” in Sync settings to set it, then sync again.",
     )
 }
 

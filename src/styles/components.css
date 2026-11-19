@@ -894,6 +894,9 @@ select.input.compact {
 
 .switch input:checked + .switch-track::after {
   transform: translateX(16px);
+  /* The knob takes the accent's contrasting colour, so "on" is visible in the dark theme too —
+     both were white there (the red-team report, L16). */
+  background: var(--accent-text);
 }
 
 .switch input:focus-visible + .switch-track {

@@ -125,7 +125,7 @@ export async function extensionInstallDialog(): Promise<void> {
       h(
         "p",
         { class: "muted" },
-        "The extension talks only to Lados on this computer. Chrome and Edge versions are coming soon.",
+        "The extension talks only to Lados on this computer. The same extension also runs in Chrome and Edge — the Firefox build is the one listed here; the Chrome and Edge builds are in their stores' review.",
       ),
     ),
     submitLabel: "Close",

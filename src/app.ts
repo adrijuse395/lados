@@ -12,6 +12,7 @@ import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
 import { errorMessage, toast } from "./ui/toast";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
+import { describeChanges, hasChanges } from "./dialogs/reports";
 import { maybeRestoreUnsavedEditor } from "./dialogs/entry-editor";
 
 function root(): HTMLElement {
@@ -51,7 +52,18 @@ export function scheduleSync(): void {
   if (!sync?.loggedIn || !sync.thisVaultSynced || syncRunning) return;
   window.clearTimeout(syncTimer);
   syncTimer = window.setTimeout(() => {
-    void performSync().catch(() => undefined);
+    // Say what a background sync brought in. It used to be discarded, so a conflict resolved on
+    // another device passed without a word (the red-team report, M3).
+    void performSync()
+      .then((report) => {
+        if (!hasChanges(report)) return;
+        toast(
+          `Synced from the cloud: ${describeChanges(report)}`,
+          "info",
+          report.conflictsResolved > 0 ? 12000 : 6000,
+        );
+      })
+      .catch(() => undefined);
   }, 900);
 }
 

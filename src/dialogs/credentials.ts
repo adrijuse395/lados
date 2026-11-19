@@ -53,16 +53,20 @@ export async function credentialsDialog<T>(options: {
   const result = await showDialog<{ value: T }>({
     title: options.title,
     size: "medium",
-    body: h(
-      "div",
-      { class: "stack" },
-      options.message ? h("div", { class: "dialog-message" }, options.message) : null,
-      field(options.newSecret ? "New password" : "Password", password.element, { target: password.input }),
-      confirmation ? field("Confirm the password", confirmation.element, { target: confirmation.input }) : null,
-      field("Key file", keyFile.element, {
-        hint: options.newSecret ? "Optional. If you use one, it will be needed together with the password." : "Only if it was protected with one.",
-      }),
-    ),
+    // The body is a function so the shared error can be cleared as soon as the user edits anything:
+    // a stale "wrong password" left under a field while it is being retyped looks like a failure
+    // that has already happened (the red-team report, L12).
+    body: (context) =>
+      h(
+        "div",
+        { class: "stack", onInput: () => context.setError(null) },
+        options.message ? h("div", { class: "dialog-message" }, options.message) : null,
+        field(options.newSecret ? "New password" : "Password", password.element, { target: password.input }),
+        confirmation ? field("Confirm the password", confirmation.element, { target: confirmation.input }) : null,
+        field("Key file", keyFile.element, {
+          hint: options.newSecret ? "Optional. If you use one, it will be needed together with the password." : "Only if it was protected with one.",
+        }),
+      ),
     submitLabel: options.submitLabel,
     busyLabel: options.busyLabel,
     onSubmit: async () => {

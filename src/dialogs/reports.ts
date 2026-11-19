@@ -47,6 +47,9 @@ export function describeChanges(report: MergeReport): string {
     report.entriesUpdated > 0 && `${plural(report.entriesUpdated, "entry", "entries")} updated`,
     report.entriesDeleted > 0 && `${plural(report.entriesDeleted, "entry", "entries")} deleted`,
     report.foldersAdded + report.foldersUpdated + report.foldersDeleted > 0 && "folders updated",
+    // Conflicts used to be left out, so a password changed on two devices was replaced without a
+    // word (the red-team report, M3).
+    report.conflictsResolved > 0 && `${plural(report.conflictsResolved, "conflict", "conflicts")} resolved`,
   ].filter((part): part is string => typeof part === "string");
   return parts.length > 0 ? parts.join(", ") : "no visible changes";
 }

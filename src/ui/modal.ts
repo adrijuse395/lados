@@ -237,6 +237,10 @@ export function showDialog<T>(options: DialogOptions<T>): Promise<T | null> {
       cancelButton?.removeAttribute("data-autofocus");
     }
 
+    // A message about a failed submit is cleared as soon as the user edits anything, so it cannot
+    // sit under a field looking like a failure that already happened (the red-team report, L12).
+    form.addEventListener("input", () => setError(null));
+
     const modal = openModal({
       title: options.title,
       size: options.size,

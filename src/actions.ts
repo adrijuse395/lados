@@ -26,11 +26,11 @@ import {
   visibleEntries,
 } from "./state/store";
 import type { EntryField, EntrySummary, MergeReport, Uuid } from "./types";
-import { field } from "./ui/controls";
+import { field, fileNameOf } from "./ui/controls";
 import { h } from "./ui/dom";
 import { svgIcon } from "./ui/icons";
-import { confirmDialog, promptDialog, showDialog } from "./ui/modal";
-import { toast, toastError } from "./ui/toast";
+import { alertDialog, confirmDialog, promptDialog, showDialog } from "./ui/modal";
+import { toast, toastError, errorMessage } from "./ui/toast";
 import { plural } from "./utils/format";
 
 /** Runs an action and reports any failure as a notification. */
@@ -39,6 +39,19 @@ export async function attempt(action: () => Promise<unknown>): Promise<void> {
     await action();
   } catch (error) {
     toastError(error);
+  }
+}
+
+/**
+ * Like `attempt`, but for an action the user started by hand — an import, a merge, an export.
+ * A toast disappears in a few seconds, which is how "nothing happened" gets reported as a bug; this
+ * stays on screen until it is dismissed (the red-team report, L2).
+ */
+export async function attemptSticky(action: () => Promise<unknown>): Promise<void> {
+  try {
+    await action();
+  } catch (error) {
+    await alertDialog("That did not work", h("p", { text: errorMessage(error) }));
   }
 }
 
@@ -345,7 +358,7 @@ export const showUrlMatchTester = () => attempt(() => openUrlMatchTester());
 // ----- Import, export and merge -----
 
 export const importCsv = () =>
-  attempt(async () => {
+  attemptSticky(async () => {
     const path = await backend.pickOpenPath("csv", "Import a CSV file");
     if (!path) return;
     const summary = await backend.importCsv(path);
@@ -354,7 +367,7 @@ export const importCsv = () =>
   });
 
 export const importKdbx = () =>
-  attempt(async () => {
+  attemptSticky(async () => {
     const path = await backend.pickOpenPath("kdbx", "Import a KeePass database");
     if (!path) return;
     const summary = await credentialsDialog({
@@ -371,7 +384,7 @@ export const importKdbx = () =>
   });
 
 export const exportCsv = () =>
-  attempt(async () => {
+  attemptSticky(async () => {
     const confirmed = await confirmDialog({
       title: "Export without encryption?",
       message: h(
@@ -401,7 +414,7 @@ export const exportCsv = () =>
   });
 
 export const exportKdbx = () =>
-  attempt(async () => {
+  attemptSticky(async () => {
     const path = await backend.pickSavePath("kdbx", "Export to a KeePass database", `${safeFileName(store.vault?.name ?? "", "Vault")}.kdbx`);
     if (!path) return;
     const done = await credentialsDialog({
@@ -421,7 +434,7 @@ export const exportKdbx = () =>
 
 /** Merges another Lados vault into this one. Its own key is tried first, as copies usually share it. */
 export const mergeVault = () =>
-  attempt(async () => {
+  attemptSticky(async () => {
     const path = await backend.pickOpenPath("vault", "Choose the vault to merge into this one");
     if (!path) return;
     let report: MergeReport | null;
@@ -431,7 +444,13 @@ export const mergeVault = () =>
       if (!isCredentialError(error)) throw error;
       report = await credentialsDialog({
         title: "Unlock the other vault",
-        message: "That vault uses a different master key. Enter it to merge both vaults.",
+        message: h(
+          "div",
+          { class: "stack" },
+          h("p", { text: "That vault uses a different master key. Enter it to merge both vaults." }),
+          // Say which file: three different causes produced one identical error (L3).
+          h("p", { class: "path-box", text: fileNameOf(path) }),
+        ),
         submitLabel: "Merge",
         busyLabel: "Merging…",
         action: ({ password, keyFile }) => backend.mergeVaultFile(path, password, keyFile),

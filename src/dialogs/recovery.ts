@@ -118,14 +118,20 @@ export async function recoverWithKey(): Promise<void> {
     const file = await backend.pickOpenPath("recovery", "Select your recovery key file");
     if (!file) return;
 
-    // Say what this key reaches on this device before asking for the new password, and stop early
-    // when it reaches nothing.
-    const targets = await backend.recoveryFileTargets(file).catch(() => null);
-    if (targets && targets.vaults.length === 0) {
+    // Validate the file as soon as it is chosen — before two "very strong" passwords are typed into
+    // a dialog that was never going to work (the red-team report, L4).
+    let targets;
+    try {
+      targets = await backend.recoveryFileTargets(file);
+    } catch (error) {
+      toastError(error);
+      return;
+    }
+    if (targets.vaults.length === 0) {
       toast(
-        "This recovery key does not open any vault on this device. It was made for a different account, or for a copy from before the key existed.",
+        "This recovery key was replaced by a newer one, or was made for a different account, so it opens no vault here.",
         "error",
-        12000,
+        15000,
       );
       return;
     }

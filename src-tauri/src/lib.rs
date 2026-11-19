@@ -48,6 +48,12 @@ fn vault_from_arguments() -> Option<PathBuf> {
     })
 }
 
+/// Launched by the system at login: sit in the tray instead of opening a window. The setting's own
+/// text promised this while no argument was ever passed (the red-team report, L8).
+fn background_launch() -> bool {
+    std::env::args().any(|argument| argument == "--background")
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // rustls needs a process-wide crypto provider. We install `ring` (enabled on our `rustls`
@@ -73,7 +79,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--background"]),
         ));
 
     builder
@@ -102,6 +108,13 @@ pub fn run() {
             background::start(app.handle().clone());
             #[cfg(desktop)]
             autofill_http::start(app.handle().clone());
+            // Started at login: stay in the tray, with no window in the way.
+            #[cfg(desktop)]
+            if background_launch()
+                && let Some(window) = app.get_webview_window("main")
+            {
+                let _ = window.hide();
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -96,7 +96,10 @@ export async function createVaultDialog(): Promise<AppStatus | null> {
             : {}),
         },
       ),
-      field("Master password", password.element, { target: password.input }),
+      field("Master password", password.element, {
+        target: password.input,
+        hint: "It must score “very strong” — this one password protects every entry in the vault.",
+      }),
       field("Confirm the master password", confirmation.element, { target: confirmation.input }),
       field("Key file", keyFile.element, {
         hint: "Optional second factor: a file that must be present, together with the password, to open the vault.",

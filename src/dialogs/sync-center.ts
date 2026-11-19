@@ -117,6 +117,11 @@ export async function openChangeMasterPassword(): Promise<AppStatus | null> {
           next.value(),
           nextKeyFile.value(),
         );
+      } catch (error) {
+        // Put the progress line away again: it used to stay on "Starting…" after a failure (L13).
+        progress.hidden = true;
+        progressText.textContent = "";
+        throw error;
       } finally {
         unlisten?.();
         unlisten = null;
@@ -336,6 +341,13 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
 
   const signOutOtherDevices = () =>
     run(async () => {
+      // Disruptive if pressed by accident: every other device has to sign in again (L13).
+      const confirmed = await confirmDialog({
+        title: "Sign out your other devices?",
+        message: "Each of your other devices will need your master password again before it can sync. This device stays signed in.",
+        confirmLabel: "Sign them out",
+      });
+      if (!confirmed) return;
       await backend.syncSignOutEverywhere();
       toast("Signed out on your other devices");
     });
@@ -344,9 +356,13 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     run(async () => {
       try {
         const report = await performSync();
+        const summary = hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date";
         toast(
-          hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date",
+          report.conflictsResolved > 0
+            ? `${summary}. An entry was changed on two devices — the version that lost is in its history.`
+            : summary,
           hasChanges(report) ? "success" : "info",
+          report.conflictsResolved > 0 ? 12000 : 3500,
         );
       } catch (error) {
         // The vault was re-keyed on its own and no longer matches the account: offer to fix it.

@@ -234,7 +234,14 @@ fn merge_folders(
     for id in ids {
         let mine = local_by_id.get(&id).copied();
         let merged = match (mine, remote_by_id.get(&id).copied()) {
-            (Some(l), Some(r)) => merge_folder(l, r),
+            (Some(l), Some(r)) => {
+                // Both devices have this folder and their names differ, so one name is about to be
+                // dropped. Report it instead of letting it disappear (the red-team report, M4).
+                if l.name != r.name {
+                    report.conflicts_resolved += 1;
+                }
+                merge_folder(l, r)
+            }
             (Some(folder), None) | (None, Some(folder)) => folder.clone(),
             (None, None) => continue,
         };

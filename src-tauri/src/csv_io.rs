@@ -136,6 +136,13 @@ fn import_error(error: csv::Error) -> Error {
 /// A file that is not UTF-8 is refused rather than half-converted: `from_utf8_lossy` turns
 /// `Cañón` into `Ca\u{FFFD}\u{FFFD}n` and the password is silently lost.
 fn text(raw: &[u8]) -> Result<String> {
+    // A NUL byte cannot appear in UTF-8 CSV text; it means the file is UTF-16 or binary. Values with
+    // hidden NULs also made fills fail later, so refuse them here (the red-team report, L1).
+    if raw.contains(&0) {
+        return Err(Error::Import(
+            "This file is not plain UTF-8 text. Save it as CSV UTF-8 and import it again.".into(),
+        ));
+    }
     String::from_utf8(raw.to_vec()).map_err(|_| {
         Error::Import(
             "This file is not UTF-8 text, so accents and letters would be damaged. Re-save it as \
@@ -147,6 +154,13 @@ fn text(raw: &[u8]) -> Result<String> {
 
 /// Reads the rows of the file. Returns them with the number of blank rows skipped.
 fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
+    // Excel's "Unicode Text" export is UTF-16. Its NUL-interleaved bytes used to import as garbage,
+    // sometimes with a blank extra entry; refuse it and say what to do (the red-team report, L1).
+    if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        return Err(Error::Import(
+            "This file is UTF-16, which Lados cannot read. In Excel choose CSV UTF-8, then import it again.".into(),
+        ));
+    }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
     // `flexible(false)`: a row whose columns do not match the header is reported, not swallowed.
     // With `flexible(true)` an unclosed quote absorbed the rest of the file into one entry.
