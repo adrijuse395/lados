@@ -53,7 +53,12 @@ fn decode(value: &str) -> Result<Vec<u8>> {
 }
 
 fn protocol<T>(result: std::result::Result<T, ProtocolError>) -> Result<T> {
-    result.map_err(|error| Error::System(format!("OPAQUE protocol error: {error:?}")))
+    result.map_err(|error| match error {
+        // A wrong password — or a missing/wrong key file — surfaces here, on the client. It is a
+        // credential problem and must read like one, not like a crash (see `sync-center.ts`).
+        ProtocolError::InvalidLoginError => Error::InvalidCredentials,
+        other => Error::System(format!("OPAQUE protocol error: {other:?}")),
+    })
 }
 
 /// Starts registration. Returns `(client state, registration request)`, both base64.
@@ -172,6 +177,9 @@ mod tests {
         .unwrap();
         // The client refuses to complete a login with the wrong password.
         let result = login_finish(b"wrong password", &login_state, &BASE64.encode(server_login.message.serialize()));
-        assert!(result.is_err(), "wrong password must not produce a finalization");
+        assert!(
+            matches!(result, Err(Error::InvalidCredentials)),
+            "a wrong password must read as a credential problem, not a system fault"
+        );
     }
 }

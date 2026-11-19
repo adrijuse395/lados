@@ -18,7 +18,7 @@ pub enum Error {
     #[error("This vault was created by a newer version of Lados (format version {0})")]
     UnsupportedVersion(u16),
 
-    #[error("The vault file is damaged")]
+    #[error("The vault file is damaged or incomplete")]
     Corrupted,
 
     #[error("The vault is locked")]

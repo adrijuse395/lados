@@ -216,7 +216,9 @@ function signInSection(refresh: () => void): HTMLElement {
       refresh();
     } catch (failure) {
       if (isCredentialError(failure)) {
-        showError("Incorrect email or password. If you changed your master password on another device, sign in with the new one.");
+        showError(
+          "Incorrect email or password. If you created the account with a key file, add it below; if you changed your master password on another device, sign in with the new one.",
+        );
       } else {
         toastError(failure);
       }
@@ -239,7 +241,7 @@ function signInSection(refresh: () => void): HTMLElement {
       class: "field-hint",
       text: "This master password is your account password and the password of every vault you sync. It must be very strong.",
     }),
-    field("Key file", keyFile.element, { hint: "Only if the vault was created with one." }),
+    field("Key file", keyFile.element, { hint: "Only if your account was created with one — leave it empty otherwise." }),
     error,
     h("div", { class: "sync-center-actions" }, signIn, create),
   );
@@ -279,7 +281,9 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         const master = await askPassword(
           "Use your sync master password",
           `Synced vaults share your sync master password. Enter it to re-encrypt “${fileNameOf(path)}”.`,
-          store.status?.keyFile ?? null,
+          // The account's key file, not the open vault's: pre-filling the vault's made it easy to
+          // send the wrong credentials to the account (see the red-team report, M2).
+          null,
         );
         if (!master) return;
         await backend.rekeyVaultFile(path, null, null, master.password, master.keyFile);
@@ -717,7 +721,7 @@ export async function downloadCloudVault(vault: CloudVault): Promise<AppStatus |
       h("p", { class: "muted", text: "The file keeps the vault's own name — you only choose where to store it." }),
       field("Save to", h("div", { class: "stack", style: "gap: 8px" }, preview, h("div", null, change))),
       field("Master password", password.element, { target: password.input }),
-      field("Key file", keyFile.element, { hint: "Only if the vault was created with one." }),
+      field("Key file", keyFile.element, { hint: "Only if your account was created with one — leave it empty otherwise." }),
     ),
     submitLabel: "Download",
     busyLabel: "Downloading…",

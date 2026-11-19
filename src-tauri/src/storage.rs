@@ -170,7 +170,11 @@ impl Header {
             nonce: bytes[56..80].try_into().map_err(|_| Error::Corrupted)?,
             flags,
         };
-        if bytes.len() <= header.prefix_len() {
+        // Every valid payload is a whole number of padding blocks plus the AEAD tag, so a file that
+        // was truncated or only partly copied is caught here, before Argon2 — instead of being
+        // reported as a wrong password further down.
+        let payload = bytes.len().saturating_sub(header.prefix_len());
+        if payload < TAG_LEN || !(payload - TAG_LEN).is_multiple_of(PADDING_BLOCK) {
             return Err(Error::Corrupted);
         }
         Ok(header)
@@ -659,6 +663,25 @@ mod tests {
             // ...and a different code does not.
             assert!(key_from_recovery(&header, &bytes, &code(4)).is_err());
         }
+    }
+
+    /// A truncated or extended file must be reported as damaged, not as a wrong password: the
+    /// padding rule catches it before any key derivation, so a user with a half-copied file is not
+    /// sent hunting for a password they remember perfectly well.
+    #[test]
+    fn a_truncated_file_is_damaged_not_a_wrong_password() {
+        let composite = crypto::composite_key("password", None);
+        let key = VaultKey::generate(&composite, KdfParams::FOR_TESTS).unwrap();
+        let bytes = encrypt_vault(&vault_with_entries(1), &key).unwrap();
+
+        for cut in [1_usize, 16, 200, 1024] {
+            let truncated = &bytes[..bytes.len() - cut];
+            assert!(matches!(Header::parse(truncated), Err(Error::Corrupted)), "cut {cut}");
+        }
+
+        let mut extended = bytes.clone();
+        extended.push(0);
+        assert!(matches!(Header::parse(&extended), Err(Error::Corrupted)));
     }
 
     #[test]
