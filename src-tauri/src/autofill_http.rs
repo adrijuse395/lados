@@ -91,23 +91,26 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
         return;
     }
 
-    // Defence in depth: a web page carries its own http(s) origin, which we refuse. A browser
-    // extension's origin is `moz-extension://…` / `chrome-extension://…`; for those we echo the
-    // CORS headers (and allow the private-network preflight) so the extension can reach us even
-    // under Private Network Access rules. We never send a wildcard, so web pages cannot read
-    // these responses either way.
-    let allow_origin = match header_value(&request, "origin") {
-        Some(origin) => {
-            let lower = origin.to_ascii_lowercase();
-            if lower.starts_with("http://") || lower.starts_with("https://") {
-                respond(&mut stream, 403, r#"{"error":"forbidden"}"#, None);
-                return;
-            }
-            Some(origin)
+    // **Only a browser extension may call the bridge.** A web page carries its own `http(s)://`
+    // origin, a sandboxed frame carries the literal `null`, and a request with no `Origin` at all
+    // is neither — all three are refused. What this cannot stop is a *local process*, which can
+    // forge any header; that is what the per-install pairing secret is for.
+    let origin = match header_value(&request, "origin") {
+        Some(origin) if allowed_origin(&origin) => origin,
+        _ => {
+            respond(&mut stream, 403, r#"{"error":"forbidden"}"#, None);
+            return;
         }
-        None => None,
     };
-    let cors = allow_origin.as_deref();
+
+    // DNS rebinding: the `Host` is the name the caller used. A rebinding page reaches this socket
+    // with an attacker-controlled Host, so only our own loopback host is accepted.
+    if !host_is_loopback(&request) {
+        respond(&mut stream, 403, r#"{"error":"forbidden"}"#, None);
+        return;
+    }
+
+    let cors = Some(origin.as_str());
 
     if method == "OPTIONS" {
         respond(&mut stream, 204, "", cors);
@@ -156,7 +159,6 @@ fn status_label(app: &AppHandle) -> &'static str {
 
 fn entries_for(app: &AppHandle, page_url: &str) -> Result<String, u16> {
     let state = app.try_state::<AppState>().ok_or(503_u16)?;
-    state.touch();
     let payload: Vec<EntryBody> = state
         .with_vault(|open| {
             let vault = open.vault();
@@ -186,7 +188,6 @@ fn entries_for(app: &AppHandle, page_url: &str) -> Result<String, u16> {
 fn reveal_for(app: &AppHandle, id: &str) -> Result<String, u16> {
     let id = Uuid::parse_str(id).map_err(|_| 404_u16)?;
     let state = app.try_state::<AppState>().ok_or(503_u16)?;
-    state.touch();
     let body = state
         .with_vault(|open| {
             let entry = open.vault().entry(id)?;
@@ -198,6 +199,25 @@ fn reveal_for(app: &AppHandle, id: &str) -> Result<String, u16> {
         .map_err(|_| 401_u16)?;
 
     serde_json::to_string(&body).map_err(|_| 500_u16)
+}
+
+/// Which origins may call the bridge: a browser extension, and nothing else. A web page carries an
+/// `http(s)://` origin and a sandboxed frame carries the literal `null`, so neither ever matches.
+fn allowed_origin(origin: &str) -> bool {
+    let lower = origin.trim().to_ascii_lowercase();
+    lower.starts_with("chrome-extension://") || lower.starts_with("moz-extension://")
+}
+
+/// Whether the request was addressed to loopback by name and not to an attacker's hostname that
+/// resolves here (DNS rebinding).
+fn host_is_loopback(request: &str) -> bool {
+    let Some(host) = header_value(request, "host") else {
+        return false;
+    };
+    let host = host.trim().to_ascii_lowercase();
+    host == format!("127.0.0.1:{PORT}")
+        || host == format!("localhost:{PORT}")
+        || host == format!("[::1]:{PORT}")
 }
 
 /// Case-insensitive lookup of a single request header.
@@ -293,4 +313,31 @@ fn respond(stream: &mut TcpStream, status: u16, body: &str, allow_origin: Option
         let _ = stream.write_all(body.as_bytes());
     }
     let _ = stream.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_browser_extension_may_call_the_bridge() {
+        assert!(allowed_origin("chrome-extension://abcdefghijklmnop"));
+        assert!(allowed_origin("moz-extension://0f1e2d3c-4b5a"));
+        assert!(allowed_origin("CHROME-EXTENSION://abc"));
+        // A web page, a sandboxed frame (`null`), a file:// page and a bare origin: all refused.
+        assert!(!allowed_origin("https://example.com"));
+        assert!(!allowed_origin("http://127.0.0.1:8099"));
+        assert!(!allowed_origin("null"));
+        assert!(!allowed_origin("file://"));
+        assert!(!allowed_origin(""));
+    }
+
+    #[test]
+    fn the_request_must_be_addressed_to_loopback() {
+        assert!(host_is_loopback("GET / HTTP/1.1\r\nHost: 127.0.0.1:18765\r\n\r\n"));
+        assert!(host_is_loopback("GET / HTTP/1.1\r\nhost: localhost:18765\r\n\r\n"));
+        // DNS rebinding arrives with the attacker's own hostname.
+        assert!(!host_is_loopback("GET / HTTP/1.1\r\nHost: evil.example.com\r\n\r\n"));
+        assert!(!host_is_loopback("GET / HTTP/1.1\r\n\r\n"));
+    }
 }
