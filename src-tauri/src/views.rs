@@ -45,6 +45,8 @@ pub struct AppStatus {
     pub channel: Option<&'static str>,
     /// The sync server this build signs in to; shown on a marked build so the target is obvious.
     pub sync_server: Option<&'static str>,
+    /// The operating system this build runs on: "windows", "linux", "macos"…
+    pub os: &'static str,
     /// Whether the open vault can also be opened with a recovery key.
     pub has_recovery_key: bool,
     /// Cloud sync state: whether the user is signed in and whether this vault syncs.

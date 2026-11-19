@@ -169,6 +169,15 @@ fn with_extension(path: PathBuf, extension: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// Like [`with_extension`], but keeps whatever extension the user typed: only a name with none
+/// gets the default. Used where forcing the extension would rename the user's own file.
+fn with_default_extension(path: PathBuf, extension: &str) -> PathBuf {
+    if path.extension().is_some() {
+        return path;
+    }
+    with_extension(path, extension)
+}
+
 fn safe_vault_file_stem(name: &str) -> String {
     let cleaned: String = name
         .chars()

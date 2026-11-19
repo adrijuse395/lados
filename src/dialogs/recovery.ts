@@ -206,7 +206,7 @@ function checkBody(file: string, check: RecoveryCheckView): Child {
     h("p", { class: "muted", text: `Recovery key: ${fileNameOf(file)}` }),
     verdict,
     checkList("Opens these vaults:", check.opens),
-    checkList("Made with a different key — an older file covers these:", check.otherKey),
+    checkList("Uses a different key:", check.otherKey),
     checkList("Has no recovery key at all:", check.noKey),
     check.complete
       ? null

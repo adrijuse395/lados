@@ -157,7 +157,10 @@ export async function openSettings(): Promise<void> {
         h("h3", { text: "Security" }),
         field("Lock the vault after this long without activity", autoLock),
         field("Clear copied passwords from the clipboard after", clipboard, {
-          hint: "Copied passwords are also kept out of the Windows clipboard history.",
+          hint:
+            store.status?.os === "windows"
+              ? "Copied passwords are also kept out of the Windows clipboard history."
+              : undefined,
         }),
       ),
       h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray, mobile ? null : startup),

@@ -360,9 +360,17 @@ async fn save_dialog(
     title: String,
     suggested_name: Option<String>,
 ) -> Result<Option<PathBuf>> {
+    // A save dialog with no starting folder opens in the executable's own directory — inside the
+    // AppImage's temporary extraction on Linux, which is gone by the next launch. Start somewhere
+    // durable instead.
     let start_dir = match kind {
         FileKind::Vault => vaults_directory(&app).ok(),
-        _ => None,
+        _ => app
+            .path()
+            .document_dir()
+            .ok()
+            .filter(|dir| dir.is_dir())
+            .or_else(|| vaults_directory(&app).ok()),
     };
     run_blocking(move || {
         let (name, extensions) = kind.filter();
@@ -381,7 +389,11 @@ async fn save_dialog(
         Ok(dialog
             .blocking_save_file()
             .and_then(|path| path.into_path().ok())
-            .map(|path| with_extension(path, extensions[0])))
+            .map(|path| match kind {
+                // A vault keeps its extension; anything else keeps the name the user chose.
+                FileKind::Vault => with_extension(path, extensions[0]),
+                _ => with_default_extension(path, extensions[0]),
+            }))
     })
     .await
 }

@@ -500,10 +500,12 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     }
 }
 
-/// Keeps a copy of the file as it was before this session changed it.
+/// Keeps a copy of the file as it was before this session changed it. An existing backup is left
+/// alone: a later re-encryption (a recovery, say) must not overwrite the user's oldest copy.
 pub fn backup(path: &Path) -> Result<()> {
-    if path.exists() {
-        fs::copy(path, sibling(path, ".bak"))?;
+    let backup = sibling(path, ".bak");
+    if path.exists() && !backup.exists() {
+        fs::copy(path, &backup)?;
     }
     Ok(())
 }

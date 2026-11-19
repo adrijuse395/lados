@@ -266,6 +266,7 @@ impl AppState {
             built_at: built_at(),
             channel: BUILD_CHANNEL,
             sync_server: sync_server(),
+            os: std::env::consts::OS,
             has_recovery_key,
             sync: {
                 let account = settings.sync_account.as_ref();

@@ -133,30 +133,43 @@ fn import_error(error: csv::Error) -> Error {
     Error::Import(error.to_string())
 }
 
+/// A file that is not UTF-8 is refused rather than half-converted: `from_utf8_lossy` turns
+/// `Cañón` into `Ca\u{FFFD}\u{FFFD}n` and the password is silently lost.
+fn text(raw: &[u8]) -> Result<String> {
+    String::from_utf8(raw.to_vec()).map_err(|_| {
+        Error::Import(
+            "This file is not UTF-8 text, so accents and letters would be damaged. Re-save it as \
+             UTF-8 (in Excel, choose CSV UTF-8) and import it again."
+                .into(),
+        )
+    })
+}
+
 /// Reads the rows of the file. Returns them with the number of blank rows skipped.
 fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    // `flexible(false)`: a row whose columns do not match the header is reported, not swallowed.
+    // With `flexible(true)` an unclosed quote absorbed the rest of the file into one entry.
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(detect_delimiter(bytes))
-        .flexible(true)
+        .flexible(false)
         .from_reader(bytes);
 
     // The first column of each kind wins; repeated ones are kept as custom fields.
     let mut seen = HashSet::new();
-    let columns: Vec<Column> = reader
-        .byte_headers()
-        .map_err(import_error)?
-        .iter()
-        .map(|raw| {
-            let header = String::from_utf8_lossy(raw);
+    let mut columns: Vec<Column> = Vec::new();
+    {
+        let headers = reader.byte_headers().map_err(import_error)?;
+        for raw in headers.iter() {
+            let header = text(raw)?;
             let column = classify(&header);
-            match column {
+            columns.push(match column {
                 Column::Ignored | Column::Custom(_) => column,
                 _ if !seen.insert(discriminant(&column)) => Column::Custom(header.trim().to_string()),
                 _ => column,
-            }
-        })
-        .collect();
+            });
+        }
+    }
     let recognizable = columns
         .iter()
         .any(|c| matches!(c, Column::Title | Column::Username | Column::Password | Column::Url));
@@ -175,7 +188,7 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
         let mut content = EntryContent::default();
         let mut path = Vec::new();
         for (column, raw) in columns.iter().zip(record.iter()) {
-            let value = Zeroizing::new(String::from_utf8_lossy(raw).into_owned());
+            let value = Zeroizing::new(text(raw)?);
             if value.trim().is_empty() {
                 continue;
             }
@@ -387,8 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn files_without_known_columns_are_rejected() {
-        let mut vault = Vault::new("Test").unwrap();
+    fn files_without_known_columns_are_rejected() {        let mut vault = Vault::new("Test").unwrap();
         let result = import_csv(&mut vault, b"foo,bar\n1,2\n", "Import");
         assert!(matches!(result, Err(Error::Import(_))));
     }
@@ -430,5 +442,24 @@ mod tests {
         let again = import_csv(&mut copy, &exported, "Backup").unwrap();
         assert_eq!(again.entries_imported, 0);
         assert_eq!(again.duplicates_skipped, 2);
+    }
+
+    /// A Latin-1 export used to import silently as `Ca\u{FFFD}n`, losing the accented letters — and
+    /// the password with them. It must be refused instead.
+    #[test]
+    fn a_file_that_is_not_utf8_is_refused_instead_of_garbled() {
+        let latin1 = b"Title,Username,Password\nCa\xF1on,jos\xE9,secret\n";
+        assert!(matches!(parse(latin1), Err(Error::Import(_))));
+        // The same content as UTF-8 is fine.
+        assert!(parse("Title,Username,Password\nCañón,josé,secret\n".as_bytes()).is_ok());
+    }
+
+    /// An unclosed quote used to absorb the rest of the file into one garbage entry.
+    #[test]
+    fn an_unclosed_quote_is_reported_instead_of_swallowed() {
+        let malformed = b"Title,Username,Password\n\"unclosed,quote,pw\nmore,rows,here\n";
+        let result = parse(malformed);
+        assert!(result.is_err(), "a malformed file must be reported, not imported");
+        assert!(matches!(result, Err(Error::Import(_))));
     }
 }

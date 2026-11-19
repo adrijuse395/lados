@@ -107,6 +107,8 @@ export interface AppStatus {
   channel: string | null;
   /** The sync server this build signs in to; shown on a marked build. */
   syncServer: string | null;
+  /** The operating system this build runs on: "windows" | "linux" | "macos". */
+  os: string;
   /** Whether the open vault can also be opened with a recovery key. */
   hasRecoveryKey: boolean;
   /** Cloud sync state. */

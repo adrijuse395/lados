@@ -235,6 +235,9 @@ function signInSection(refresh: () => void): HTMLElement {
       class: "muted",
       text: "Sign in to sync your vaults across devices, or to download them on this one. Your vault is encrypted on this device before it is uploaded; only your master password opens it.",
     }),
+    store.status?.sync.serverUrl
+      ? h("p", { class: "muted", text: `Server: ${store.status.sync.serverUrl}` })
+      : null,
     field("Email", email),
     field("Master password", password.element, { target: password.input }),
     h("p", {
@@ -744,6 +747,8 @@ function joinPath(folder: string, name: string): string {
 async function signOut(refresh: () => void): Promise<void> {
   try {
     store.status = await backend.syncSignOut();
+    // A stale "Sync failed" chip has nothing left to describe.
+    store.syncError = null;
     toast("Signed out");
     refresh();
   } catch (error) {
@@ -762,6 +767,8 @@ async function removeAccount(refresh: () => void): Promise<void> {
   if (!confirmed) return;
   try {
     store.status = await backend.syncDeleteAccount();
+    // Nothing is synced any more, so the old failure note must not outlive the account.
+    store.syncError = null;
     toast("Account deleted");
     refresh();
   } catch (error) {
