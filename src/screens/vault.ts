@@ -378,7 +378,8 @@ function onKeyDown(event: KeyboardEvent): void {
       z: () => void actions.undoDelete(),
     };
     const command = commands[key];
-    if (!command || (key === "c" && hasTextSelection(event.target))) return;
+    // Leave Ctrl+Z in a text field to the field's own undo; only act when focus is elsewhere.
+    if (!command || (key === "c" && hasTextSelection(event.target)) || (key === "z" && typing)) return;
     event.preventDefault();
     command();
     return;
