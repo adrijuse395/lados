@@ -33,7 +33,7 @@ mod views;
 
 use std::path::PathBuf;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 #[cfg(desktop)]
 use tauri::WindowEvent;
 
@@ -104,7 +104,14 @@ pub fn run() {
             // always has one to show.
             let _ = app.state::<AppState>().autofill_token();
             #[cfg(desktop)]
-            tray::create(app.handle())?;
+            {
+                let available = tray::create(app.handle()).is_ok();
+                if !available {
+                    // No tray means no way back to a hidden window, so do not hide it.
+                    eprintln!("Lados: the system tray could not be created; close-to-tray is disabled");
+                }
+                app.state::<AppState>().set_tray_available(available);
+            }
             background::start(app.handle().clone());
             #[cfg(desktop)]
             autofill_http::start(app.handle().clone());
@@ -121,10 +128,13 @@ pub fn run() {
             #[cfg(desktop)]
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
-                let to_tray = state.settings().preferences.close_to_tray;
+                // Only hide when the tray actually exists: on a desktop without one, the window
+                // used to vanish with no icon and no way back (the red-team report, M17).
+                let to_tray = state.settings().preferences.close_to_tray && state.tray_available();
                 if to_tray && !state.is_quitting() {
                     api.prevent_close();
                     let _ = window.hide();
+                    let _ = window.emit("app-hidden-to-tray", ());
                 }
             }
             #[cfg(mobile)]

@@ -115,6 +115,9 @@ pub struct AppState {
     pending_reveals: Mutex<HashMap<Uuid, mpsc::Sender<bool>>>,
     /// Entries the user already allowed this session, for the "once per entry" mode.
     allowed_reveals: Mutex<HashSet<(String, String)>>,
+    /// Whether the system tray icon could be created. Without it, hiding the window would leave no
+    /// way back, so close-to-tray is not honoured (the red-team report, M17).
+    tray_available: AtomicBool,
 }
 
 impl AppState {
@@ -136,6 +139,7 @@ impl AppState {
             quitting: AtomicBool::new(false),
             pending_reveals: Mutex::new(HashMap::new()),
             allowed_reveals: Mutex::new(HashSet::new()),
+            tray_available: AtomicBool::new(false),
         }
     }
 
@@ -168,6 +172,16 @@ impl AppState {
 
     pub fn is_quitting(&self) -> bool {
         self.quitting.load(Ordering::SeqCst)
+    }
+
+    /// Records whether a tray icon exists, so closing the window can only hide it when there is a
+    /// way to bring it back.
+    pub fn set_tray_available(&self, available: bool) {
+        self.tray_available.store(available, Ordering::SeqCst);
+    }
+
+    pub fn tray_available(&self) -> bool {
+        self.tray_available.load(Ordering::SeqCst)
     }
 
     // ----- Autofill pairing and consent -----

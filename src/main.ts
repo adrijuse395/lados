@@ -33,6 +33,7 @@ async function start(): Promise<void> {
   behaveLikeAnApplication();
   trackActivity();
   installShortcuts();
+  let hiddenNoticeShown = false;
 
   await listenToBackend({
     vaultLocked(reason) {
@@ -86,6 +87,12 @@ async function start(): Promise<void> {
     },
     autofillReveal(request) {
       void askAutofillReveal(request);
+    },
+    appHiddenToTray() {
+      // Say where it went, once: the window disappears and the app looks closed (M17).
+      if (hiddenNoticeShown) return;
+      hiddenNoticeShown = true;
+      toast("Lados is still running in the system tray. Use its icon to reopen or quit.", "info", 9000);
     },
   });
 

@@ -15,6 +15,8 @@ export interface BackendEventHandlers {
   clipboardCleared(): void;
   /** The browser extension wants to fill a login and needs the user's answer. */
   autofillReveal(request: AutofillRevealRequest): void;
+  /** The window was hidden to the system tray, where the app keeps running. */
+  appHiddenToTray(): void;
 }
 
 export async function listenToBackend(handlers: BackendEventHandlers): Promise<UnlistenFn> {
@@ -26,6 +28,7 @@ export async function listenToBackend(handlers: BackendEventHandlers): Promise<U
     listen<string>("vault-sync-error", (event) => handlers.syncError(event.payload)),
     listen("clipboard-cleared", () => handlers.clipboardCleared()),
     listen<AutofillRevealRequest>("autofill-reveal", (event) => handlers.autofillReveal(event.payload)),
+    listen("app-hidden-to-tray", () => handlers.appHiddenToTray()),
   ]);
   return () => unlisteners.forEach((unlisten) => unlisten());
 }
