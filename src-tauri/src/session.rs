@@ -189,6 +189,10 @@ impl VaultFile {
 pub struct OpenVault {
     vault: Vault,
     file: VaultFile,
+    /// Bumped every time the in-memory vault changes. A cloud sync clones the vault, does its
+    /// network round trip without holding the session lock, and adapts this before adopting the
+    /// result, so a change the user made in the meantime is never overwritten (code review).
+    generation: u64,
 }
 
 impl Drop for OpenVault {
@@ -207,6 +211,7 @@ impl OpenVault {
         Ok(OpenVault {
             vault,
             file: VaultFile::new(path, composite, key, &bytes, true),
+            generation: 0,
         })
     }
 
@@ -219,6 +224,7 @@ impl OpenVault {
         Ok(OpenVault {
             vault,
             file: VaultFile::new(path, composite, key, &bytes, false),
+            generation: 0,
         })
     }
 
@@ -240,6 +246,12 @@ impl OpenVault {
         &self.file.key
     }
 
+    /// A counter that changes with every modification of the in-memory vault, so a slow task can
+    /// tell whether the vault changed underneath it (code review).
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Re-encrypts the vault for new credentials, keeping any recovery key working.
     pub fn rekey(&mut self, composite: SecretKey, kdf: KdfParams) -> Result<SaveOutcome> {
         let key = self.file.key.rewrap(&composite, kdf)?;
@@ -253,6 +265,7 @@ impl OpenVault {
         let value = change(&mut draft)?;
         let outcome = self.file.save(&mut draft, None)?;
         std::mem::swap(&mut self.vault, &mut *draft);
+        self.generation += 1;
         Ok((value, outcome))
     }
 
@@ -262,6 +275,7 @@ impl OpenVault {
         let mut draft = Zeroizing::new(self.vault.clone());
         let outcome = self.file.save(&mut draft, Some((composite, key)))?;
         std::mem::swap(&mut self.vault, &mut *draft);
+        self.generation += 1;
         Ok(outcome)
     }
 
@@ -271,6 +285,7 @@ impl OpenVault {
         let mut draft = Zeroizing::new(vault);
         let outcome = self.file.save(&mut draft, Some((composite, key)))?;
         std::mem::swap(&mut self.vault, &mut *draft);
+        self.generation += 1;
         Ok(outcome)
     }
 
@@ -294,15 +309,35 @@ impl OpenVault {
         last_seen: Option<u64>,
     ) -> Result<(MergeReport, u64)> {
         let composite = self.file.composite.clone();
-        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &composite, &self.file.key, last_seen)?;
-        let key_changed = outcome.key.salt != self.file.key.salt || outcome.key.kdf != self.file.key.kdf;
-        if outcome.changed_locally || key_changed {
+        let key = self.file.key.clone();
+        let outcome = crate::sync::sync(remote, vault_id, &self.vault, &composite, &key, last_seen)?;
+        self.adopt_sync(outcome)
+    }
+
+    /// Adopts the result of a sync pass and saves the merged vault if it changed.
+    ///
+    /// Separate from `sync_remote` so a caller can run the network round trip and the key
+    /// derivation with the session lock released, then take it again only to save (code review).
+    #[cfg(feature = "sync")]
+    pub fn adopt_sync(&mut self, outcome: crate::sync::SyncOutcome) -> Result<(MergeReport, u64)> {
+        let crate::sync::SyncOutcome {
+            vault,
+            changed_locally,
+            key,
+            report,
+            version,
+            ..
+        } = outcome;
+        let key_changed = key.salt != self.file.key.salt || key.kdf != self.file.key.kdf;
+        if changed_locally || key_changed {
             // Adopt the remote header so every device converges on one salt.
-            let mut draft = Zeroizing::new(outcome.vault.clone());
-            self.file.save(&mut draft, Some((composite, outcome.key)))?;
+            let mut draft = Zeroizing::new(vault);
+            let composite = self.file.composite.clone();
+            self.file.save(&mut draft, Some((composite, key)))?;
             std::mem::swap(&mut self.vault, &mut *draft);
+            self.generation += 1;
         }
-        Ok((outcome.report, outcome.version))
+        Ok((report, version))
     }
 
     /// Picks up changes saved by other windows. Called periodically.
@@ -330,6 +365,7 @@ impl OpenVault {
                     let saved = self.file.save(&mut combined, None)?;
                     if let Some(path) = saved.conflict_copy {
                         std::mem::swap(&mut self.vault, &mut *combined);
+                        self.generation += 1;
                         return Ok(SyncOutcome::Diverged(path));
                     }
                 } else {
@@ -337,6 +373,7 @@ impl OpenVault {
                     self.file.disk_stamp = stamp;
                 }
                 std::mem::swap(&mut self.vault, &mut *combined);
+                self.generation += 1;
                 Ok(SyncOutcome::Merged {
                     report: merged.report,
                     local_changed: merged.local_changed,
@@ -404,6 +441,21 @@ mod tests {
         assert!(open.modify(|vault| vault.add_entry(None, content("  "))).is_err());
         assert!(open.vault().entries.is_empty());
         assert_eq!(std::fs::read(open.path()).unwrap(), before);
+    }
+
+    #[test]
+    fn the_generation_advances_only_when_the_vault_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut open = create(dir.path(), "pw");
+        let start = open.generation();
+
+        open.modify(|vault| vault.add_entry(None, content("Mail"))).unwrap();
+        assert!(open.generation() > start);
+
+        // A change that fails leaves the vault, and the generation, exactly as they were.
+        let after = open.generation();
+        assert!(open.modify(|vault| vault.add_entry(None, content("  "))).is_err());
+        assert_eq!(open.generation(), after);
     }
 
     #[test]

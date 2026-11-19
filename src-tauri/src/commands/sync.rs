@@ -449,47 +449,74 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                     synced.last_version,
                 )
             };
-            let open_id = state.with_vault(|open| Ok(open.vault().id.to_string()))?;
-            if !local_id.is_empty() && local_id != open_id {
-                return Err(Error::invalid("This vault is not the one set up for sync"));
-            }
             let remote = crate::sync::HttpRemote::new(&base, &token);
-            // The cloud copy may have been deleted on another device. Say so and stop syncing,
-            // rather than failing inside the merge with no explanation (the red-team report, M5).
-            {
-                use crate::sync::Remote;
-                if last_version.is_some() && remote.get(&server_vault_id)?.is_none() {
-                    state.update_settings(|settings| settings.forget_synced_vault(&path))?;
-                    return Err(Error::invalid(
-                        "This vault was removed from the cloud on another device, so it is no longer synced here. The file is kept; to upload it again, open Sync settings and sync this vault again.",
-                    ));
+
+            // Two passes at most: the second only runs when the user changed the vault while the
+            // first pass's round trip was in flight. The network and the Argon2 key derivation run
+            // with the session lock released, so `get_status`, `get_vault_view` and `search_entries`
+            // on the main thread are not stuck behind them (the red-team report, code review). The
+            // lock is taken again only to adopt the result.
+            for _ in 0..2 {
+                let (vault, composite, key, generation, open_id) = state.with_vault(|open| {
+                    Ok((
+                        open.vault().clone(),
+                        open.composite(),
+                        open.key().clone(),
+                        open.generation(),
+                        open.vault().id.to_string(),
+                    ))
+                })?;
+                if !local_id.is_empty() && local_id != open_id {
+                    return Err(Error::invalid("This vault is not the one set up for sync"));
                 }
-            }
-            let outcome = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, last_version));
-            let (report, version) = match outcome {
-                Ok(value) => value,
-                Err(error) => {
-                    // The cloud copy could not be read with this vault's key. If the vault's
-                    // master password is not the account's (for example, it was re-keyed on its
-                    // own), say so, so the interface can offer to re-key the vault back.
-                    if matches!(error, Error::InvalidCredentials | Error::Corrupted) {
-                        let composite = state.with_vault(|open| Ok(open.composite()))?;
-                        if !is_the_account_password(&base, &email, &composite) {
+
+                // The cloud copy may have been deleted on another device. Say so and stop syncing,
+                // rather than failing inside the merge with no explanation (the red-team report, M5).
+                {
+                    use crate::sync::Remote;
+                    if last_version.is_some() && remote.get(&server_vault_id)?.is_none() {
+                        state.update_settings(|settings| settings.forget_synced_vault(&path))?;
+                        return Err(Error::invalid(
+                            "This vault was removed from the cloud on another device, so it is no longer synced here. The file is kept; to upload it again, open Sync settings and sync this vault again.",
+                        ));
+                    }
+                }
+
+                let outcome = match crate::sync::sync(&remote, &server_vault_id, &vault, &composite, &key, last_version) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        // The cloud copy could not be read with this vault's key. If the vault's
+                        // master password is not the account's (for example, it was re-keyed on its
+                        // own), say so, so the interface can offer to re-key the vault back.
+                        if matches!(error, Error::InvalidCredentials | Error::Corrupted)
+                            && !is_the_account_password(&base, &email, &composite)
+                        {
                             return Err(wrong_master_password());
                         }
+                        return Err(error);
                     }
-                    return Err(error);
+                };
+
+                let adopted = state.with_vault_mut(|open| {
+                    if open.path() != path || open.generation() != generation {
+                        // Changed underneath: drop this pass and start a fresh one.
+                        return Ok(None);
+                    }
+                    let (report, version) = open.adopt_sync(outcome)?;
+                    Ok(Some((report, version, open.vault().name.clone())))
+                })?;
+                if let Some((report, version, open_name)) = adopted {
+                    state.update_settings(|settings| {
+                        if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
+                            entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
+                            entry.name = Some(open_name);
+                            entry.last_version = Some(version);
+                        }
+                    })?;
+                    return Ok(report);
                 }
-            };
-            let open_name = state.with_vault(|open| Ok(open.vault().name.clone()))?;
-            state.update_settings(|settings| {
-                if let Some(entry) = settings.synced_vaults.iter_mut().find(|v| v.path == path) {
-                    entry.last_synced_at = Some(chrono::Utc::now().timestamp_millis());
-                    entry.name = Some(open_name);
-                    entry.last_version = Some(version);
-                }
-            })?;
-            Ok(report)
+            }
+            Err(Error::invalid("The vault kept changing while it was syncing; try again in a moment"))
         })
         .await
     }
