@@ -193,11 +193,13 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
                 continue;
             }
             match column {
-                Column::Title => content.title = value.trim().to_string(),
-                Column::Username => content.username = value.trim().to_string(),
+                // Visible fields are read back through `unsanitize`, so a round trip leaves them
+                // unchanged. The password is not: it was written out verbatim.
+                Column::Title => content.title = unsanitize(value.trim()).to_string(),
+                Column::Username => content.username = unsanitize(value.trim()).to_string(),
                 Column::Password => content.password = value.to_string(),
-                Column::Url => content.url = Some(value.trim().to_string()),
-                Column::Notes => content.notes = Some(value.replace("\r\n", "\n")),
+                Column::Url => content.url = Some(unsanitize(value.trim()).to_string()),
+                Column::Notes => content.notes = Some(unsanitize(&value.replace("\r\n", "\n")).to_string()),
                 Column::Group => path = split_path(&value),
                 Column::Expires => match parse_date(&value) {
                     Some(date) => content.expiration_date = Some(date),
@@ -215,11 +217,14 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
                 }),
                 Column::PackedFields => parse_packed_fields(&value, &mut content.custom_fields),
                 Column::Ignored => {}
-                Column::Custom(name) => content.custom_fields.push(CustomField {
-                    name: name.clone(),
-                    value: value.to_string(),
-                    protected: looks_secret(name),
-                }),
+                Column::Custom(name) => {
+                    let protected = looks_secret(name);
+                    content.custom_fields.push(CustomField {
+                        name: name.clone(),
+                        value: if protected { value.to_string() } else { unsanitize(&value).to_string() },
+                        protected,
+                    });
+                }
             }
         }
         if content == EntryContent::default() {
@@ -273,6 +278,27 @@ pub fn import_csv(vault: &mut Vault, bytes: &[u8], source_name: &str) -> Result<
     Ok(summary)
 }
 
+/// A spreadsheet runs a cell that begins with `=`, `+`, `-` or `@` as a formula, and `HYPERLINK` or
+/// `WEBSERVICE` can then read the rest of the sheet — including the passwords exported beside it.
+/// Prefixing such a value makes it plain text. Only non-secret fields are touched: changing a
+/// password would corrupt it (the red-team report, M14).
+fn sanitize(value: &str) -> String {
+    let dangerous = matches!(value.chars().next(), Some('=' | '+' | '-' | '@' | '\t' | '\r'));
+    if dangerous {
+        format!("'{value}")
+    } else {
+        value.to_string()
+    }
+}
+
+/// Undoes [`sanitize`] when a file is read back, so a round trip does not leave a stray apostrophe.
+fn unsanitize(value: &str) -> &str {
+    match value.strip_prefix('\'') {
+        Some(rest) if matches!(rest.chars().next(), Some('=' | '+' | '-' | '@' | '\t' | '\r')) => rest,
+        _ => value,
+    }
+}
+
 /// Writes every entry, with its folder path, in clear text.
 pub fn export_csv(vault: &Vault) -> Result<Zeroizing<Vec<u8>>> {
     let export_error = |error: csv::Error| Error::Export(error.to_string());
@@ -283,10 +309,13 @@ pub fn export_csv(vault: &Vault) -> Result<Zeroizing<Vec<u8>>> {
         .collect();
 
     let mut writer = csv::Writer::from_writer(Vec::new());
-    let mut header = vec![
+    let mut header: Vec<String> = [
         "Group", "Title", "Username", "Password", "URL", "Notes", "Expires", "Created", "Modified",
-    ];
-    header.extend(field_names.iter().copied());
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    header.extend(field_names.iter().map(|name| sanitize(name)));
     writer.write_record(&header).map_err(export_error)?;
 
     let mut entries: Vec<(String, &crate::models::Entry)> = vault
@@ -300,11 +329,12 @@ pub fn export_csv(vault: &Vault) -> Result<Zeroizing<Vec<u8>>> {
         let content = &entry.content;
         let mut record = vec![
             path,
-            content.title.clone(),
-            content.username.clone(),
+            sanitize(&content.title),
+            sanitize(&content.username),
+            // The password goes out exactly as it is: prefixing it would change it on the way back.
             content.password.clone(),
-            content.url.clone().unwrap_or_default(),
-            content.notes.clone().unwrap_or_default(),
+            sanitize(content.url.as_deref().unwrap_or_default()),
+            sanitize(content.notes.as_deref().unwrap_or_default()),
             content.expiration_date.map(|date| date.to_string()).unwrap_or_default(),
             entry.created_at.to_rfc3339(),
             entry.modified_at.to_rfc3339(),
@@ -316,7 +346,14 @@ pub fn export_csv(vault: &Vault) -> Result<Zeroizing<Vec<u8>>> {
                 .filter(|field| field.name == *name)
                 .map(|field| field.value.as_str())
                 .collect();
-            record.push(values.join("\n"));
+            // A protected custom field is a secret as well: leave it exactly as it is.
+            let all_protected = content
+                .custom_fields
+                .iter()
+                .filter(|field| field.name == *name)
+                .all(|field| field.protected);
+            let joined = values.join("\n");
+            record.push(if all_protected { joined } else { sanitize(&joined) });
         }
         let written = writer.write_record(&record);
         record.zeroize();
@@ -456,10 +493,41 @@ mod tests {
 
     /// An unclosed quote used to absorb the rest of the file into one garbage entry.
     #[test]
-    fn an_unclosed_quote_is_reported_instead_of_swallowed() {
-        let malformed = b"Title,Username,Password\n\"unclosed,quote,pw\nmore,rows,here\n";
+    fn an_unclosed_quote_is_reported_instead_of_swallowed() {        let malformed = b"Title,Username,Password\n\"unclosed,quote,pw\nmore,rows,here\n";
         let result = parse(malformed);
         assert!(result.is_err(), "a malformed file must be reported, not imported");
         assert!(matches!(result, Err(Error::Import(_))));
+    }
+
+    /// A cell a spreadsheet would run as a formula is neutralised on export, and restored on
+    /// import — but a password is written and read back exactly (the red-team report, M14).
+    #[test]
+    fn formula_like_text_is_neutralised_on_export_and_restored_on_import() {
+        let title = "=HYPERLINK(\"http://evil\",\"x\")";
+        let username = "+cmd|' /C calc'!A0";
+
+        let mut vault = Vault::new("Test").unwrap();
+        let mut entry = EntryContent {
+            title: title.into(),
+            username: username.into(),
+            password: "=1+1".into(),
+            ..Default::default()
+        };
+        entry.custom_fields.push(CustomField { name: "Note2".into(), value: "@SUM(1)".into(), protected: false });
+        entry.custom_fields.push(CustomField { name: "PIN".into(), value: "=1+1".into(), protected: true });
+        vault.add_entry(None, entry).unwrap();
+
+        let exported = String::from_utf8(export_csv(&vault).unwrap().to_vec()).unwrap();
+        assert!(exported.contains("'=HYPERLINK"), "the title is neutralised: {exported}");
+        assert!(exported.contains("'+cmd"), "the username is neutralised");
+        assert!(exported.contains("'@SUM(1)"), "the unprotected custom field is neutralised");
+        assert!(exported.contains(",=1+1,"), "the password is left exactly as it is");
+
+        let mut copy = Vault::new("Copy").unwrap();
+        import_csv(&mut copy, exported.as_bytes(), "Backup").unwrap();
+        assert_eq!(copy.entries[0].content.title, title);
+        assert_eq!(copy.entries[0].content.username, username);
+        assert_eq!(copy.entries[0].content.password, "=1+1");
+        assert!(copy.entries[0].content.custom_fields.iter().any(|f| f.name == "Note2" && f.value == "@SUM(1)"));
     }
 }

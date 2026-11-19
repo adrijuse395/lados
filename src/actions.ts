@@ -379,6 +379,10 @@ export const exportCsv = () =>
         { class: "stack" },
         h("p", { text: "A CSV file stores every password as plain text. Anyone who can open the file can read them." }),
         h("p", { text: "Use it only to move your passwords to another program, and delete the file afterwards." }),
+        h("p", {
+          class: "muted",
+          text: "Text a spreadsheet would run as a formula is prefixed with an apostrophe, so the file is safe to open. Passwords are written exactly as they are.",
+        }),
       ),
       confirmLabel: "Export anyway",
       danger: true,
