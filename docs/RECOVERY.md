@@ -40,18 +40,20 @@ A recovery code is not tied to a single vault. Each vault stores its own salt, n
 **same code** can wrap the secret of every vault that shares your master password — that is what
 "one key per account" means here:
 
-- **Create** produces **one code** and applies it to the open vault plus **every synced vault on this
-  device**, with **one file** to keep.
+- **Create** produces **one code** and applies it to **every vault on this device that the master
+  password opens** — the open one, the synced ones, and any local-only one that shares the password
+  — with **one file** to keep.
 - **Recover** takes that file and restores **every** vault that carries the code: the ones on this
   device, and — while a session is still valid — the cloud copies that are not here, pulled and
   re-encrypted under the new master password.
 - It then re-registers the **account credential** with the new password and revokes the other
   sessions, so recovery leaves you signed in and syncing: the same reach as a normal password change.
 
-The master password already opens all of those vaults, so the recovery key now matches its scope
-instead of being narrower. It follows that the file is worth exactly what the password is worth.
+The master password already opens all of those vaults, so the recovery key matches its scope instead
+of being narrower. It follows that the file is worth exactly what the password is worth.
 
-*(A **local-only** vault may use a different password, so it keeps getting a key of its own.)*
+*(A vault with a **different** password is not opened by yours, so it keeps a key of its own. Both
+flows list the files they will touch and ask before writing.)*
 
 ## Using it
 

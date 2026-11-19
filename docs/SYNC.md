@@ -1,12 +1,11 @@
 # Lados Sync — design
 
-Status: **draft (design only — no code yet)**
+Status: **implemented, behind the `sync` Cargo feature, and not yet released.** The design below is
+what the code does; the app ships with Sync off until the live billing credentials are in place
+(`GO-LIVE.md`).
 
 Lados Sync is an **optional, paid, zero-knowledge sync service** for multi-device users.
 Lados itself stays **free, offline-first, and fully functional without an account**.
-
-This document is the contract we build against. Nothing here changes the current app
-until it is deliberately implemented behind a feature flag.
 
 ## 1. Goals and non-goals
 
@@ -59,14 +58,11 @@ From the user's master password (and optional key file — see §9) the client d
 | `encKey` | device only, never sent | Encrypts/decrypts the vault (as today) |
 | `authSecret` | exchanged during login only | Authenticates the account |
 
-- The server stores a **verifier**: `SHA-256(salt ‖ authSecret)` with a per-account
-  salt. `authSecret` is `Argon2id(compositeKey, salt = f(email))` — **per-account salted**, so
-  two users with the same password derive different secrets and a leaked table cannot be
-  attacked with one Argon2 run per guess across all accounts. The server never stores
-  `authSecret`.
-- **Migration:** older accounts are upgraded in place on their next successful login. The
-  client also sends the previous derivations (a single-salt Argon2, and the original fast
-  hash) so any pre-existing account can authenticate once and be re-keyed.
+- The server stores **only an OPAQUE registration record** — never the password, never a
+  password-equivalent. `authSecret` is `Argon2id(compositeKey, salt = f(email))`, so two users with
+  the same password derive different secrets.
+- **Migration:** accounts created before OPAQUE sign in once through `/auth/login` and are upgraded
+  in place with `/auth/upgrade/*`. Nothing else reads the old derivations.
 - **v1 login:** **OPAQUE** (RFC 9807). The client and server run a PAKE, so the server never
   sees the password or anything replayable. The client’s OPAQUE input is the Argon2 `authSecret`,
   which keeps offline guessing Argon2-priced. The server’s OPAQUE module is the same `opaque-ke`
@@ -418,11 +414,12 @@ device and never transmitted.
 - The **Cloudflare account** and the **release-signing key** are the root of trust; they need
   2FA, scoped tokens and alerts. A malicious server can serve data and even logins, but it still
   cannot decrypt vaults.
-- **Planned:** OPAQUE login, so the server never sees a password-equivalent.
+- **Built:** OPAQUE login (RFC 9807), so the server never sees a password-equivalent.
 
 ### Known limitations / next steps
 1. **Remaining metadata** — the account email, vault sizes and timestamps are still visible.
 2. **Email verification** — removes enumeration and enables billing.
-3. **Password rotation** — changing the account password must re-key the cloud vaults; not
-   built yet. (Sessions can already be revoked: “Sign out other devices”.)
+3. **Password rotation** — **built:** `change_master_password` re-encrypts every synced vault on the
+   device and re-registers the account credential; cloud copies are re-keyed without ever being
+   written in clear. Sessions are revoked with “Sign out other devices”.
 
