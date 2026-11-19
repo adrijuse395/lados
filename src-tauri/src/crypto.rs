@@ -354,4 +354,17 @@ mod tests {
         assert_eq!(data_line_count, 2);
         assert_ne!(*new_key_file().unwrap(), *key_file);
     }
+
+    #[test]
+    fn sync_auth_secret_matches_the_seed_script() {
+        // A seeded account must sign in from the app, which sends this exact secret to OPAQUE.
+        // `sync-server/scripts/seed-account.mjs` reproduces the derivation; if either side drifts,
+        // the seeded accounts stop working (the red-team report, I1).
+        let composite = composite_key("REDACTED-STAGING-PASSWORD", None);
+        let secret = sync_auth_secret(&composite, "explorer@example.com").unwrap();
+        assert_eq!(
+            secret,
+            "2547be07fc2e5b35492ae359bce6e172c76c6bf17bde76c892de4d4d056738ff"
+        );
+    }
 }

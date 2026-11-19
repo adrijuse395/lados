@@ -359,7 +359,7 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
         const summary = hasChanges(report) ? `Synced: ${describeChanges(report)}` : "Everything is up to date";
         toast(
           report.conflictsResolved > 0
-            ? `${summary}. An entry was changed on two devices — the version that lost is in its history.`
+            ? `${summary}. An entry changed on two devices, or was deleted on one and edited on the other. Nothing is lost — the earlier version is in the entry's history.`
             : summary,
           hasChanges(report) ? "success" : "info",
           report.conflictsResolved > 0 ? 12000 : 3500,

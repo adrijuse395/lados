@@ -124,8 +124,8 @@ fn create_for_account(
     let account = state.settings().sync_account.as_ref().map(|account| account.email.clone());
 
     // Write the file *first*: a code with no vault is harmless, a wrap whose code the user never
-    // received is not.
-    storage::write_atomic(file, recovery::file_contents(&names, account.as_deref(), &text).as_bytes())?;
+    // received is not. The file names no vaults (I4); the list is shown in the app instead.
+    storage::write_atomic(file, recovery::file_contents(names.len(), account.as_deref(), &text).as_bytes())?;
 
     // Add the wrap to each covered vault and save it. The open one goes through the session so it
     // stays valid; the others are opened just for this.

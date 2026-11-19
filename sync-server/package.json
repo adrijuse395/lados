@@ -12,10 +12,12 @@
     "build:opaque": "wasm-pack build opaque-wasm --target web",
     "smoke": "node scripts/smoke.mjs",
     "smoke:opaque": "node scripts/opaque-e2e.mjs",
+    "seed:check": "node scripts/seed-account.mjs --check",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241022.0",
+    "@noble/hashes": "^1.8.0",
     "@serenity-kit/opaque": "^1.1.0",
     "typescript": "^5.6.3",
     "wrangler": "^3.90.0"

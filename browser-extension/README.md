@@ -92,6 +92,20 @@ Produces (under `browser-extension/build/`, git-ignored):
 The store pages for Firefox, Chrome and Edge are wired in `src/dialogs/browser-extension.ts`;
 set each URL there once the add-on is published.
 
+## Known limitations
+
+These are deliberate, and are the cases the fill does **not** cover (the red-team report, I3):
+
+- **Open shadow roots and cross-origin iframes.** Fields inside a page's own shadow DOM, or in an
+  iframe the extension does not run in, are not detected — so no widget appears. Many SSO and
+  embedded-login forms are built this way.
+- **IP addresses and host names are different sites.** Matching is by host, so `http://127.0.0.1/`
+  and `http://localhost/` do not match each other: save the entry under the exact host you use.
+- **Forms with several password fields.** On a change-password form only the first password field is
+  filled; the "new" and "confirm" boxes are left for you (the extension never invents a password).
+- **One match per fill.** The widget fills the username and password of the entry you choose; it is
+  not a general form filler.
+
 ## Notes
 
 - Firefox requires the fixed `browser_specific_settings.gecko.id`; Chromium needs `manifest_version: 3` with `background.service_worker`.

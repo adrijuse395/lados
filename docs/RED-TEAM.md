@@ -124,6 +124,21 @@ Create the accounts **through the staging build** (OPAQUE means they cannot be i
    field. Unlock it so autofill can be tested.
 3. Optionally seed one `comp` account to exercise the free-access path.
 
+When the app is not at hand, `sync-server/scripts/seed-account.mjs` registers an account the app
+can open. It derives the same OPAQUE secret the app sends —
+`hex(Argon2id(composite_key(password), auth_salt(email)))`, from `crypto.rs` — because a seeder that
+registers the raw password produces an account the app can never sign in to (report I1):
+
+```
+BASE_URL=https://lados-sync-staging.<subdomain>.workers.dev \
+  node sync-server/scripts/seed-account.mjs explorer@example.com 'REDACTED-STAGING-PASSWORD'
+```
+
+`node sync-server/scripts/seed-account.mjs --check` (or `npm run seed:check` there) verifies the
+derivation against the value pinned in the Rust test `sync_auth_secret_matches_the_seed_script`.
+Re-seeding an email that already exists needs its old row deleted first; the script's header shows
+the `wrangler d1 execute … DELETE` command.
+
 Credentials are shared **out of band** (never committed). Anything the agent needs day to day goes in
 `red-team/local.md`, which is git-ignored.
 

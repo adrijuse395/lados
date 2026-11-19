@@ -322,6 +322,12 @@ fn merge_entries(
             }
             continue;
         }
+        if deleted.contains_key(&id) {
+            // A delete on one copy lost to a newer edit on the other, so the entry comes back on
+            // both devices. That is the safe choice, but it must not be silent (the red-team
+            // report, I2): count it as a conflict so the sync report mentions it.
+            report.conflicts_resolved += 1;
+        }
         deleted.remove(&id);
         match mine {
             None => report.entries_added += 1,
@@ -651,6 +657,8 @@ mod tests {
         assert_eq!(outcome.vault.entry(bank).unwrap().content.password, "b-2");
         assert!(!outcome.vault.deleted_objects.iter().any(|d| d.id == bank));
         assert_eq!(outcome.report.entries_deleted, 1);
+        // The delete-vs-edit is reported, not silent (I2).
+        assert_eq!(outcome.report.conflicts_resolved, 1);
     }
 
     #[test]
