@@ -5,8 +5,10 @@ name: Staging build
 #
 #   GitHub → Actions → Staging build → Run workflow
 #
-# It creates (or updates) a **pre-release** tagged `staging` with the installers, so a test bot
-# can download the asset for its platform — Linux, Windows or macOS — without a local toolchain.
+# It creates (or updates) a **draft pre-release** with the installers, so a test bot can be given
+# the asset for its platform — Linux, Windows or macOS — without a local toolchain. A draft is
+# **not public**: only maintainers can see or download it, so a test build is never advertised.
+# Publish it only if a specific round needs a public download link.
 #
 # This never runs on a push and never touches the release pipeline (`release.yml` is tag-driven).
 
@@ -17,6 +19,14 @@ on:
         description: "Sync server the build targets (staging only)"
         required: true
         default: "https://lados-sync-staging.ladospwm.workers.dev"
+      tag:
+        description: "Release tag to create/update — use a fresh one per round"
+        required: true
+        default: "staging-2"
+      draft:
+        description: "Keep it a draft (non-public; only maintainers can download)"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -83,14 +93,14 @@ jobs:
           LADOS_SYNC_SERVER: ${{ inputs.server }}
           LADOS_CHANNEL: staging
         with:
-          tagName: staging
-          releaseName: "Lados — staging test build"
+          tagName: ${{ inputs.tag }}
+          releaseName: "Lados — staging test build (${{ inputs.tag }})"
           releaseBody: |
             **This is a test build, not a release.** It targets the staging sync server, is marked
             `staging` in Settings, and has its in-app updater disabled on purpose.
 
             Do **not** put real passwords in it. See `red-team/README-TESTING.md`.
-          releaseDraft: false
+          releaseDraft: ${{ inputs.draft }}
           prerelease: true
           uploadUpdaterJson: false
           args: ${{ matrix.args }} --features sync --config .github/staging.conf.json
