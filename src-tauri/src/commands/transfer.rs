@@ -30,9 +30,16 @@ pub fn import_kdbx(
     modify(&app, &state, |vault| keepass_io::import_kdbx(vault, &database, &source))
 }
 
-/// Writes every secret in clear text: the interface warns the user before calling this.
+/// Writes every secret in clear text: the interface warns the user before calling this, and asks
+/// for the credentials that opened the vault, because this is a full copy of everything (L17).
 #[tauri::command(async)]
-pub fn export_csv(state: State<'_, AppState>, path: String) -> Result<()> {
+pub fn export_csv(
+    state: State<'_, AppState>,
+    path: String,
+    password: String,
+    key_file: Option<String>,
+) -> Result<()> {
+    confirm_open_vault(&state, &password, key_file.as_deref())?;
     state.touch();
     let bytes = state.with_vault(|open| csv_io::export_csv(open.vault()))?;
     storage::write_atomic(&with_extension(PathBuf::from(path), csv_io::FILE_EXTENSION), &bytes)

@@ -75,8 +75,8 @@ export const backend = {
   unlockVault: (password: string, keyFile: string | null) => call<AppStatus>("unlock_vault", { password, keyFile }),
   lockVault: () => call<AppStatus>("lock_vault"),
   generateKeyFile: () => call<string | null>("generate_key_file"),
-  changeMasterKey: (password: string, keyFile: string | null) =>
-    call<AppStatus>("change_master_key", { password, keyFile }),
+  changeMasterKey: (password: string, keyFile: string | null, currentPassword: string, currentKeyFile: string | null) =>
+    call<AppStatus>("change_master_key", { password, keyFile, currentPassword, currentKeyFile }),
   /** Creates one recovery key covering every vault the master password opens; returns what it covered. */
   createRecoveryKey: (path: string, password: string, keyFile: string | null) =>
     call<RecoveryKeyView>("create_recovery_key", { path, password, keyFile }),
@@ -164,7 +164,8 @@ export const backend = {
     call<AppStatus>("sync_download", { serverVaultId, folder, password, keyFile }),
   pickFolder: (title: string) => call<string | null>("pick_folder", { title }),
   syncNow: () => call<MergeReport>("sync_now"),
-  syncDeleteAccount: () => call<AppStatus>("sync_delete_account"),
+  syncDeleteAccount: (password: string, keyFile: string | null) =>
+    call<AppStatus>("sync_delete_account", { password, keyFile }),
   syncStatus: () => call<SyncView>("sync_status"),
 
   // Folders and icons
@@ -183,7 +184,8 @@ export const backend = {
   importCsv: (path: string) => call<ImportSummary>("import_csv", { path }),
   importKdbx: (path: string, password: string, keyFile: string | null) =>
     call<ImportSummary>("import_kdbx", { path, password, keyFile }),
-  exportCsv: (path: string) => call<void>("export_csv", { path }),
+  exportCsv: (path: string, password: string, keyFile: string | null) =>
+    call<void>("export_csv", { path, password, keyFile }),
   exportKdbx: (path: string, password: string, keyFile: string | null) =>
     call<void>("export_kdbx", { path, password, keyFile }),
   mergeVaultFile: (path: string, password: string | null, keyFile: string | null) =>

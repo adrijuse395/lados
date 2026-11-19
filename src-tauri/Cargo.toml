@@ -46,6 +46,8 @@ chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
 sha2 = "0.11"
 rand = "0.10"
 zeroize = { version = "1.9", features = ["derive"] }
+# Search folds accents away, so a query typed with an accent matches a name stored without it.
+unicode-normalization = "0.1"
 
 # Import / export
 csv = "1.4"

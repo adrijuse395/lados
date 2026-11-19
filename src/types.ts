@@ -15,7 +15,7 @@ export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recover
  * in `src-tauri/src/commands/mod.rs`: when the running app process is older, the interface says so
  * plainly instead of failing with a puzzling error on the first call that needs something new.
  */
-export const API_REVISION = 3;
+export const API_REVISION = 4;
 
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {

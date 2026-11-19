@@ -9,6 +9,21 @@ export interface Credentials {
 }
 
 /**
+ * Asks again for the credentials that opened the vault, before an action that cannot be undone.
+ * A shared dialog keeps the three callers consistent, and a vault opened with a key file and no
+ * password can still confirm here.
+ */
+export function confirmCredentialsDialog(title: string, message: Child): Promise<Credentials | null> {
+  return credentialsDialog<Credentials>({
+    title,
+    message,
+    submitLabel: "Confirm",
+    passwordOptional: true,
+    action: async (credentials) => credentials,
+  });
+}
+
+/**
  * Asks for a password and an optional key file, then runs `action` while the dialog stays
  * open, so a wrong password can be corrected on the spot.
  */

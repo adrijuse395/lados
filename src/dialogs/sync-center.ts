@@ -13,7 +13,7 @@ import { confirmDialog, showDialog } from "../ui/modal";
 import { toast, toastError } from "../ui/toast";
 import { formatDay, relativeTime } from "../utils/format";
 import { estimateStrength } from "../utils/strength";
-import { credentialsDialog } from "./credentials";
+import { confirmCredentialsDialog, credentialsDialog } from "./credentials";
 import { describeChanges, hasChanges } from "./reports";
 
 /** A vault whose master password isn't the account's cannot be synced until it is re-keyed. */
@@ -765,8 +765,13 @@ async function removeAccount(refresh: () => void): Promise<void> {
     danger: true,
   });
   if (!confirmed) return;
+  const current = await confirmCredentialsDialog(
+    "Confirm it's you",
+    "This deletes your account and every encrypted copy on the server, and cancels the subscription. Enter your sync master password. If you no longer know it: cancel the subscription in Paddle, or write to ladospwm@proton.me and we will remove the account.",
+  );
+  if (!current) return;
   try {
-    store.status = await backend.syncDeleteAccount();
+    store.status = await backend.syncDeleteAccount(current.password, current.keyFile);
     // Nothing is synced any more, so the old failure note must not outlive the account.
     store.syncError = null;
     toast("Account deleted");

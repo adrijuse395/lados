@@ -93,7 +93,13 @@ pub async fn generate_key_file(app: AppHandle, window: WebviewWindow) -> Result<
 }
 
 #[tauri::command]
-pub async fn change_master_key(app: AppHandle, password: String, key_file: Option<String>) -> Result<AppStatus> {
+pub async fn change_master_key(
+    app: AppHandle,
+    password: String,
+    key_file: Option<String>,
+    current_password: String,
+    current_key_file: Option<String>,
+) -> Result<AppStatus> {
     // A signed-in sync user has one master password — the account's — and every synced vault
     // must share it. Re-keying a single vault here would break that link, so it is refused; the
     // account-wide change lives in the Sync settings.
@@ -104,6 +110,10 @@ pub async fn change_master_key(app: AppHandle, password: String, key_file: Optio
              Change it from Sync settings so every synced vault stays in step.",
         ));
     }
+
+    // Changing the key locks anyone who does not learn the new one out of the vault, so the caller
+    // must prove they hold the current credentials first (see the red-team report, L7).
+    confirm_open_vault(&state, &current_password, current_key_file.as_deref())?;
 
     let password = Zeroizing::new(password);
     require_password(&password)?;

@@ -1,9 +1,21 @@
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
+use unicode_normalization::UnicodeNormalization;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
 use crate::error::{Error, Result};
+
+/// Folds text to a forgiving form for search: decomposed, lower case, and without combining marks.
+/// So `é` matches whether it is stored precomposed or as `e` + accent, and a plain `e` matches both.
+/// Entries imported from macOS — which stores names decomposed — used to be unfindable by an
+/// accented query (the red-team report, M11).
+fn fold(text: &str) -> String {
+    text.nfd()
+        .filter(|character| !unicode_normalization::char::is_combining_mark(*character))
+        .collect::<String>()
+        .to_lowercase()
+}
 
 /// Version of the vault's internal structure, so future releases can migrate old files.
 pub const SCHEMA_VERSION: u8 = 1;
@@ -271,8 +283,7 @@ impl EntryContent {
     }
 
     /// Text used by the search box. Protected values are never searchable.
-    fn searchable_text(&self) -> String {
-        let mut text = format!("{}\n{}\n", self.title, self.username);
+    fn searchable_text(&self) -> String {        let mut text = format!("{}\n{}\n", self.title, self.username);
         for value in [&self.url, &self.notes].into_iter().flatten() {
             text.push_str(value);
             text.push('\n');
@@ -285,10 +296,9 @@ impl EntryContent {
                 text.push('\n');
             }
         }
-        text.to_lowercase()
+        fold(&text)
     }
 }
-
 impl Entry {
     pub fn new(folder_id: Option<Uuid>, content: EntryContent) -> Self {
         let now = Utc::now();
@@ -596,7 +606,7 @@ impl Vault {
 
     /// Ids of the entries that contain every word of `query`, ignoring case.
     pub fn search(&self, query: &str) -> Vec<Uuid> {
-        let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let terms: Vec<String> = query.split_whitespace().map(fold).collect();
         if terms.is_empty() {
             return Vec::new();
         }
@@ -821,6 +831,20 @@ mod tests {
         assert!(vault.search("4321").is_empty());
         assert!(vault.search("secret").is_empty());
         assert_eq!(vault.search("ADRIA").len(), 2);
+    }
+
+    /// The search box folded accents and composition (M11): a query with a precomposed `é` must
+    /// find a name stored decomposed (as macOS writes it), and a plain `e` must find it too.
+    #[test]
+    fn search_ignores_accents_and_composition() {
+        let mut vault = Vault::new("Test").unwrap();
+        let decomposed = "Cafe\u{301} Central";
+        let id = vault.add_entry(None, content(decomposed)).unwrap();
+
+        assert_eq!(vault.search("café"), vec![id], "precomposed query");
+        assert_eq!(vault.search("cafe\u{301}"), vec![id], "decomposed query");
+        assert_eq!(vault.search("cafe"), vec![id], "plain query");
+        assert!(vault.search("cafeteria").is_empty());
     }
 
     #[test]

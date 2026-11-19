@@ -217,8 +217,12 @@ pub async fn resync_labels(app: AppHandle) -> Result<AppStatus> {
 
 /// Deletes the sync account and everything it holds on the server, then signs out locally.
 /// The vaults themselves stay on this device, as local-only.
+///
+/// This is the one irreversible action the app performs on someone else's machine: it destroys the
+/// only off-device copy and cancels the subscription. So it asks for the account credential again
+/// (M7) — a mis-click, or somebody at an unlocked machine, must not be able to do it.
 #[tauri::command]
-pub async fn sync_delete_account(app: AppHandle) -> Result<AppStatus> {
+pub async fn sync_delete_account(app: AppHandle, password: String, key_file: Option<String>) -> Result<AppStatus> {
     #[cfg(feature = "sync")]
     {
         run_blocking(move || {
@@ -228,6 +232,13 @@ pub async fn sync_delete_account(app: AppHandle) -> Result<AppStatus> {
                 .sync_account
                 .clone()
                 .ok_or_else(|| Error::invalid("Not signed in"))?;
+
+            let password = Zeroizing::new(password);
+            let composite = composite_key(&password, key_file.as_deref())?;
+            if !is_the_account_password(&account.server_url, &account.email, &composite) {
+                return Err(Error::invalid("That is not your sync master password"));
+            }
+
             crate::sync::delete_account(&account.server_url, &account.token)?;
             state.update_settings(|settings| {
                 settings.sync_account = None;
@@ -239,7 +250,7 @@ pub async fn sync_delete_account(app: AppHandle) -> Result<AppStatus> {
     }
     #[cfg(not(feature = "sync"))]
     {
-        let _ = app;
+        let _ = (app, password, key_file);
         Err(Error::invalid("Sync is not available in this build"))
     }
 }

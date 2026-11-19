@@ -44,7 +44,7 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 /// Without it, a running process older than its interface fails with a confusing message on the
 /// first new call — which is what happens in development, where the dev server reloads the
 /// interface instantly while the app process only changes when it is restarted.
-pub const API_REVISION: u32 = 3;
+pub const API_REVISION: u32 = 4;
 
 pub mod account;
 pub mod autofill;
@@ -153,6 +153,24 @@ fn composite_key(password: &str, key_file: Option<&str>) -> Result<SecretKey> {
 fn require_password(password: &str) -> Result<()> {
     if password.is_empty() {
         return Err(Error::invalid("The master password cannot be empty"));
+    }
+    Ok(())
+}
+
+/// Confirms that the caller knows the credentials that opened the current vault.
+///
+/// Used before an action that cannot be undone — writing every secret out in clear, changing the
+/// master key — so that someone who walks up to an unlocked machine cannot do it. A vault opened
+/// with a key file and no password is accepted, as long as the key file is given.
+fn confirm_open_vault(state: &AppState, password: &str, key_file: Option<&str>) -> Result<()> {
+    if password.is_empty() && key_file.is_none() {
+        return Err(Error::invalid("Enter the password, or choose the key file that opened this vault"));
+    }
+    let password = Zeroizing::new(password.to_owned());
+    let composite = composite_key(&password, key_file)?;
+    let open = state.with_vault(|open| Ok(open.composite()))?;
+    if crypto::secret_to_base64(&composite) != crypto::secret_to_base64(&open) {
+        return Err(Error::invalid("That is not what opened this vault"));
     }
     Ok(())
 }

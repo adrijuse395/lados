@@ -2,7 +2,7 @@
 // all call these functions.
 
 import { redraw, refreshSelection, refreshStatus, reloadVault, showStatus } from "./app";
-import { credentialsDialog } from "./dialogs/credentials";
+import { credentialsDialog, confirmCredentialsDialog } from "./dialogs/credentials";
 import { safeFileName } from "./dialogs/create-vault";
 import { folderSelect, openEntryEditor } from "./dialogs/entry-editor";
 import { openFolderEditor } from "./dialogs/folder-editor";
@@ -83,6 +83,13 @@ export const changeMasterKey = () =>
       toast("You're signed in to Lados Sync — use “Change master password” so every synced vault stays in step.", "info", 7000);
       return;
     }
+    // A vault can be locked out by whoever changes the master key, so the current credentials are
+    // required again (the red-team report, L7).
+    const current = await confirmCredentialsDialog(
+      "Confirm it's you",
+      "Changing the master key re-encrypts this vault, and anyone who does not know the new one is locked out. Enter the credentials that opened it.",
+    );
+    if (!current) return;
     const status = await credentialsDialog({
       title: "Change the master key",
       message: h(
@@ -99,7 +106,7 @@ export const changeMasterKey = () =>
       minStrength: 4,
       allowCreateKeyFile: true,
       initialKeyFile: store.status?.keyFile ?? null,
-      action: ({ password, keyFile }) => backend.changeMasterKey(password, keyFile),
+      action: ({ password, keyFile }) => backend.changeMasterKey(password, keyFile, current.password, current.keyFile),
     });
     if (!status) return;
     await showStatus(status);
@@ -377,9 +384,15 @@ export const exportCsv = () =>
       danger: true,
     });
     if (!confirmed) return;
+    // This file holds every password in the clear, so prove the credentials again first (L17).
+    const current = await confirmCredentialsDialog(
+      "Confirm it's you",
+      "A CSV file stores every password as plain text. Enter the credentials that opened this vault.",
+    );
+    if (!current) return;
     const path = await backend.pickSavePath("csv", "Export to a CSV file", `${safeFileName(store.vault?.name ?? "", "Vault")}.csv`);
     if (!path) return;
-    await backend.exportCsv(path);
+    await backend.exportCsv(path, current.password, current.keyFile);
     toast("Vault exported to CSV", "success");
   });
 
