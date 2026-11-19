@@ -49,7 +49,7 @@ zeroize = { version = "1.9", features = ["derive"] }
 
 # Import / export
 csv = "1.4"
-keepass = { version = "0.15", features = ["save_kdbx4"] }
+keepass = { version = "0.17", features = ["save_kdbx4"] }
 base64 = "0.23"
 
 # Optional sync client (only compiled with the `sync` feature).

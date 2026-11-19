@@ -186,7 +186,7 @@ fn content_from(entry: &keepass::db::Entry) -> EntryContent {
         ..Default::default()
     };
     if entry.times.expires == Some(true) {
-        content.expiration_date = entry.times.expiry.map(|expiry| expiry.date());
+        content.expiration_date = Some(entry.times.expiry.date());
     }
 
     let mut names: Vec<&String> = entry
@@ -350,11 +350,12 @@ fn write_content(entry: &mut keepass::db::Entry, content: &EntryContent) {
     match content.expiration_date {
         Some(date) => {
             entry.times.expires = Some(true);
-            entry.times.expiry = date.and_hms_opt(12, 0, 0);
+            entry.times.expiry = date.and_hms_opt(12, 0, 0).unwrap_or_default();
         }
         None => {
             entry.times.expires = Some(false);
-            entry.times.expiry = None;
+            // Ignored while `expires` is false, but the field is no longer optional.
+            entry.times.expiry = NaiveDateTime::default();
         }
     }
 }
