@@ -15,7 +15,7 @@ export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recover
  * in `src-tauri/src/commands/mod.rs`: when the running app process is older, the interface says so
  * plainly instead of failing with a puzzling error on the first call that needs something new.
  */
-export const API_REVISION = 4;
+export const API_REVISION = 5;
 
 /** Which browsers are installed on this machine (drives the extension install flow). */
 export interface BrowserPresence {
@@ -325,6 +325,12 @@ export interface MergeReport {
   foldersAdded: number;
   foldersUpdated: number;
   foldersDeleted: number;
+}
+
+/** What a delete removed, so the interface can word its message and offer an undo (M10). */
+export interface DeleteOutcome {
+  entries: number;
+  folders: number;
 }
 
 export type EntryField =

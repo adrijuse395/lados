@@ -79,9 +79,55 @@ pub fn move_entry(app: AppHandle, state: State<'_, AppState>, id: Uuid, folder_i
     modify(&app, &state, |vault| vault.move_entry(id, folder_id))
 }
 
+/// What a delete removed, so the interface can word its message and offer an undo.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteOutcome {
+    pub entries: usize,
+    pub folders: usize,
+}
+
+impl DeleteOutcome {
+    fn of(deleted: &models::Deleted) -> Self {
+        DeleteOutcome {
+            entries: deleted.entries.len(),
+            folders: deleted.folders.len(),
+        }
+    }
+}
+
+/// Runs a delete and keeps what it removed in memory, so the interface can offer to undo it.
+fn delete_and_remember(
+    app: &AppHandle,
+    state: &AppState,
+    change: impl FnOnce(&mut Vault) -> Result<models::Deleted>,
+) -> Result<DeleteOutcome> {
+    let path = state.with_vault(|open| Ok(open.path().to_path_buf()))?;
+    let deleted = modify(app, state, change)?;
+    let outcome = DeleteOutcome::of(&deleted);
+    state.remember_delete(path, deleted);
+    Ok(outcome)
+}
+
 #[tauri::command(async)]
-pub fn delete_entry(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    modify(&app, &state, |vault| vault.delete_entry(id))
+pub fn delete_entry(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> Result<DeleteOutcome> {
+    delete_and_remember(&app, &state, |vault| vault.delete_entry(id))
+}
+
+/// Puts back the last deleted entry or folder. `None` when there is nothing left to undo.
+#[tauri::command(async)]
+pub fn undo_delete(app: AppHandle, state: State<'_, AppState>) -> Result<Option<DeleteOutcome>> {
+    let path = state.with_vault(|open| Ok(open.path().to_path_buf()))?;
+    let Some(deleted) = state.pending_delete(&path) else {
+        return Ok(None);
+    };
+    let outcome = DeleteOutcome::of(&deleted);
+    modify(&app, &state, |vault| {
+        vault.restore(deleted);
+        Ok(())
+    })?;
+    state.clear_delete();
+    Ok(Some(outcome))
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -248,8 +294,8 @@ pub fn move_folder(app: AppHandle, state: State<'_, AppState>, id: Uuid, parent_
 }
 
 #[tauri::command(async)]
-pub fn delete_folder(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> Result<()> {
-    modify(&app, &state, |vault| vault.delete_folder(id))
+pub fn delete_folder(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> Result<DeleteOutcome> {
+    delete_and_remember(&app, &state, |vault| vault.delete_folder(id))
 }
 
 /// Lets the user pick an image and stores it inside the vault. Returns its id, or `None` if cancelled.

@@ -375,6 +375,7 @@ function onKeyDown(event: KeyboardEvent): void {
       u: () => void actions.openUrl(),
       b: () => actions.copyUsername(),
       c: () => actions.copyPassword(),
+      z: () => void actions.undoDelete(),
     };
     const command = commands[key];
     if (!command || (key === "c" && hasTextSelection(event.target))) return;

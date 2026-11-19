@@ -129,6 +129,16 @@ pub struct DeletedObject {
     pub deleted_at: DateTime<Utc>,
 }
 
+/// What a delete removed, so the user can put it back (the red-team report, M10).
+///
+/// A folder delete takes the whole subtree, so this holds every row that left the vault, not just
+/// the folder the user pointed at.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Deleted {
+    pub entries: Vec<Entry>,
+    pub folders: Vec<Folder>,
+}
+
 /// The whole database. This is exactly what gets encrypted into the `.lados` file.
 ///
 /// Folders and entries are stored in flat lists that reference their parent by id:
@@ -479,29 +489,32 @@ impl Vault {
     }
 
     /// Deletes the folder, its subfolders and every entry inside them.
-    pub fn delete_folder(&mut self, id: Uuid) -> Result<()> {
+    pub fn delete_folder(&mut self, id: Uuid) -> Result<Deleted> {
         self.folder(id)?;
         let doomed = self.subtree(id);
 
-        let mut deleted = Vec::new();
+        let mut deleted = Deleted::default();
         self.entries.retain(|entry| {
             let inside = entry.folder_id.is_some_and(|f| doomed.contains(&f));
             if inside {
-                deleted.push((entry.id, entry.last_change()));
+                deleted.entries.push(entry.clone());
             }
             !inside
         });
         self.folders.retain(|folder| {
             let inside = doomed.contains(&folder.id);
             if inside {
-                deleted.push((folder.id, folder.last_change()));
+                deleted.folders.push(folder.clone());
             }
             !inside
         });
-        for (id, last_change) in deleted {
-            self.record_deletion(id, last_change);
+        for entry in &deleted.entries {
+            self.record_deletion(entry.id, entry.last_change());
         }
-        Ok(())
+        for folder in &deleted.folders {
+            self.record_deletion(folder.id, folder.last_change());
+        }
+        Ok(deleted)
     }
 
     // ----- Entries -----
@@ -564,7 +577,7 @@ impl Vault {
         Ok(())
     }
 
-    pub fn delete_entry(&mut self, id: Uuid) -> Result<()> {
+    pub fn delete_entry(&mut self, id: Uuid) -> Result<Deleted> {
         let index = self
             .entries
             .iter()
@@ -572,7 +585,47 @@ impl Vault {
             .ok_or(Error::NotFound("entry"))?;
         let entry = self.entries.remove(index);
         self.record_deletion(entry.id, entry.last_change());
-        Ok(())
+        Ok(Deleted {
+            entries: vec![entry],
+            folders: Vec::new(),
+        })
+    }
+
+    /// Puts back what a delete removed and clears its tombstones, so the rows are alive again.
+    ///
+    /// The timestamps are moved past the tombstone, so a copy that still carries the deletion loses
+    /// against the restored rows on the next merge instead of deleting them a second time (M10).
+    pub fn restore(&mut self, deleted: Deleted) {
+        let restored_folders: Vec<Uuid> = deleted.folders.iter().map(|folder| folder.id).collect();
+        for mut folder in deleted.folders {
+            let id = folder.id;
+            // A parent that is not coming back either would leave the folder dangling.
+            if folder
+                .parent_id
+                .is_some_and(|parent| !restored_folders.contains(&parent) && self.folder(parent).is_err())
+            {
+                folder.parent_id = None;
+            }
+            folder.modified_at = timestamp_after(self.change_baseline(id, folder.last_change()));
+            if !self.folders.iter().any(|existing| existing.id == id) {
+                self.folders.push(folder);
+            }
+            self.forget_deletion(id);
+        }
+        for mut entry in deleted.entries {
+            let id = entry.id;
+            if entry
+                .folder_id
+                .is_some_and(|parent| !restored_folders.contains(&parent) && self.folder(parent).is_err())
+            {
+                entry.folder_id = None;
+            }
+            entry.modified_at = timestamp_after(self.change_baseline(id, entry.last_change()));
+            if !self.entries.iter().any(|existing| existing.id == id) {
+                self.entries.push(entry);
+            }
+            self.forget_deletion(id);
+        }
     }
 
     pub fn duplicate_entry(&mut self, id: Uuid) -> Result<Uuid> {
@@ -661,6 +714,20 @@ impl Vault {
         match self.deleted_objects.iter_mut().find(|d| d.id == id) {
             Some(existing) => existing.deleted_at = existing.deleted_at.max(deleted_at),
             None => self.deleted_objects.push(DeletedObject { id, deleted_at }),
+        }
+    }
+
+    /// Drops the tombstone for a row that has just been restored.
+    fn forget_deletion(&mut self, id: Uuid) {
+        self.deleted_objects.retain(|deleted| deleted.id != id);
+    }
+
+    /// The later of a row's own last change and the tombstone being cleared, so restoring it
+    /// always lands strictly after the deletion.
+    fn change_baseline(&self, id: Uuid, last_change: DateTime<Utc>) -> DateTime<Utc> {
+        match self.deleted_objects.iter().find(|deleted| deleted.id == id) {
+            Some(deleted) => last_change.max(deleted.deleted_at),
+            None => last_change,
         }
     }
 }
@@ -755,6 +822,37 @@ mod tests {
         assert!(vault.folder(servers).is_err());
         let deleted: Vec<Uuid> = vault.deleted_objects.iter().map(|d| d.id).collect();
         assert!(deleted.contains(&work) && deleted.contains(&servers) && deleted.contains(&inside));
+    }
+
+    #[test]
+    fn a_deleted_folder_can_be_put_back_whole() {
+        let mut vault = Vault::new("Test").unwrap();
+        let work = vault.add_folder(None, "Work", None).unwrap();
+        let servers = vault.add_folder(Some(work), "Servers", None).unwrap();
+        let ssh = vault.add_entry(Some(servers), content("SSH")).unwrap();
+
+        let removed = vault.delete_folder(work).unwrap();
+        vault.restore(removed);
+
+        assert_eq!(vault.folder(servers).unwrap().parent_id, Some(work));
+        assert_eq!(vault.entry(ssh).unwrap().folder_id, Some(servers));
+        // The tombstones are gone, so a merge will not delete the restored rows again.
+        assert!(vault.deleted_objects.is_empty());
+    }
+
+    #[test]
+    fn a_restored_entry_is_newer_than_its_own_deletion() {
+        let mut vault = Vault::new("Test").unwrap();
+        let id = vault.add_entry(None, content("Mail")).unwrap();
+
+        let removed = vault.delete_entry(id).unwrap();
+        let tombstone = vault.deleted_objects[0].deleted_at;
+        vault.restore(removed);
+
+        assert!(vault.deleted_objects.is_empty());
+        // A copy taken while the entry was deleted still carries the tombstone; the restored entry
+        // must beat it, otherwise a sync would silently remove it again.
+        assert!(vault.entry(id).unwrap().last_change() > tombstone);
     }
 
     #[test]

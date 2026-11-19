@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 use crate::clipboard::ClipboardState;
 use crate::crypto;
 use crate::error::{Error, Result};
+use crate::models::Deleted;
 use crate::session::OpenVault;
 use crate::settings::Settings;
 use crate::views::{
@@ -118,6 +119,9 @@ pub struct AppState {
     /// Whether the system tray icon could be created. Without it, hiding the window would leave no
     /// way back, so close-to-tray is not honoured (the red-team report, M17).
     tray_available: AtomicBool,
+    /// The last deletion in the open vault, kept in memory so the interface can offer an undo
+    /// (the red-team report, M10). Holds the vault path too, so it cannot be undone into another.
+    undo_delete: Mutex<Option<(PathBuf, Deleted)>>,
 }
 
 impl AppState {
@@ -140,6 +144,7 @@ impl AppState {
             pending_reveals: Mutex::new(HashMap::new()),
             allowed_reveals: Mutex::new(HashSet::new()),
             tray_available: AtomicBool::new(false),
+            undo_delete: Mutex::new(None),
         }
     }
 
@@ -249,6 +254,27 @@ impl AppState {
 
     pub fn reveal_entry_allowed(&self, vault_id: &str, entry_id: &str) -> bool {
         lock(&self.allowed_reveals).contains(&(vault_id.to_owned(), entry_id.to_owned()))
+    }
+
+    // ----- Undoing a delete -----
+
+    /// Remembers the last deletion, so the interface can offer to undo it. Replaces any earlier one.
+    pub fn remember_delete(&self, vault: PathBuf, deleted: Deleted) {
+        *lock(&self.undo_delete) = Some((vault, deleted));
+    }
+
+    /// The pending deletion, when it belongs to `vault`. Cloned so a failed save can leave it in
+    /// place for another attempt.
+    pub fn pending_delete(&self, vault: &Path) -> Option<Deleted> {
+        lock(&self.undo_delete)
+            .as_ref()
+            .filter(|(path, _)| path == vault)
+            .map(|(_, deleted)| deleted.clone())
+    }
+
+    /// Forgets the pending deletion, after it was undone or when the vault changes.
+    pub fn clear_delete(&self) {
+        *lock(&self.undo_delete) = None;
     }
 
     pub fn status(&self) -> AppStatus {

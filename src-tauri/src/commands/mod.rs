@@ -44,7 +44,7 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 /// Without it, a running process older than its interface fails with a confusing message on the
 /// first new call — which is what happens in development, where the dev server reloads the
 /// interface instantly while the app process only changes when it is restarted.
-pub const API_REVISION: u32 = 4;
+pub const API_REVISION: u32 = 5;
 
 pub mod account;
 pub mod autofill;
@@ -70,8 +70,10 @@ pub fn lock_now(app: &AppHandle, reason: LockReason) -> bool {
     let state = app.state::<AppState>();
     let locked = state.session().lock();
     if locked {
-        // A locked vault must not leave an "allow this fill?" prompt answerable.
+        // A locked vault must not leave an "allow this fill?" prompt answerable, nor an undo
+        // holding decrypted rows from a vault that is no longer open.
         state.cancel_reveals();
+        state.clear_delete();
         clipboard::clear_now(app);
         let _ = app.emit("vault-locked", reason);
     }
@@ -90,6 +92,7 @@ pub fn cleanup(app: &AppHandle) {
     clipboard::clear_now(app);
     state.session().lock();
     state.cancel_reveals();
+    state.clear_delete();
 }
 
 /// A conflict copy joins the recent vaults, with the same key file as the original.
@@ -133,6 +136,8 @@ fn replace_session(app: &AppHandle, state: &AppState, new: Session) {
     if matches!(previous, Session::Unlocked(_)) {
         clipboard::clear_now(app);
     }
+    // A pending undo belongs to the vault that was open; a new one must not inherit it.
+    state.clear_delete();
 }
 
 fn key_file_path(key_file: Option<&str>) -> Option<PathBuf> {

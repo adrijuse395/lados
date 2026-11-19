@@ -13,6 +13,7 @@ import type {
   GeneratorOptions,
   Icon,
   ImportSummary,
+  DeleteOutcome,
   MergeReport,
   Preferences,
   RecentVault,
@@ -121,7 +122,8 @@ export const backend = {
   updateEntry: (id: Uuid, content: EntryContent) => call<void>("update_entry", { id, content }),
   duplicateEntry: (id: Uuid) => call<Uuid>("duplicate_entry", { id }),
   moveEntry: (id: Uuid, folderId: Uuid | null) => call<void>("move_entry", { id, folderId }),
-  deleteEntry: (id: Uuid) => call<void>("delete_entry", { id }),
+  deleteEntry: (id: Uuid) => call<DeleteOutcome>("delete_entry", { id }),
+  undoDelete: () => call<DeleteOutcome | null>("undo_delete"),
   revealField: (id: Uuid, field: EntryField) => call<string>("reveal_field", { id, field }),
   copyField: (id: Uuid, field: EntryField) => call<void>("copy_field", { id, field }),
   getEntryHistory: (id: Uuid) => call<RevisionSummary[]>("get_entry_history", { id }),
@@ -173,7 +175,7 @@ export const backend = {
     call<Uuid>("create_folder", { parentId, name, icon }),
   updateFolder: (id: Uuid, name: string, icon: Icon | null) => call<void>("update_folder", { id, name, icon }),
   moveFolder: (id: Uuid, parentId: Uuid | null) => call<void>("move_folder", { id, parentId }),
-  deleteFolder: (id: Uuid) => call<void>("delete_folder", { id }),
+  deleteFolder: (id: Uuid) => call<DeleteOutcome>("delete_folder", { id }),
   addCustomIcon: () => call<Uuid | null>("add_custom_icon"),
 
   // Generator and clipboard

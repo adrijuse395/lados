@@ -25,7 +25,7 @@ import {
   store,
   visibleEntries,
 } from "./state/store";
-import type { EntryField, EntrySummary, MergeReport, Uuid } from "./types";
+import type { DeleteOutcome, EntryField, EntrySummary, MergeReport, Uuid } from "./types";
 import { field, fileNameOf } from "./ui/controls";
 import { h } from "./ui/dom";
 import { svgIcon } from "./ui/icons";
@@ -189,8 +189,38 @@ export const deleteEntry = (id = store.selectedEntryId) =>
       store.selectedEntryId = (list[index + 1] ?? list[index - 1])?.id ?? null;
     }
     await reloadVault();
-    toast("Entry deleted");
+    offerUndo("Entry deleted");
   });
+
+/** What a restored delete put back, in words. */
+function restoredMessage(outcome: DeleteOutcome): string {
+  const parts = [
+    outcome.folders > 0 && plural(outcome.folders, "folder"),
+    outcome.entries > 0 && plural(outcome.entries, "entry", "entries"),
+  ].filter(Boolean);
+  return parts.length > 0 ? `Restored ${parts.join(" and ")}` : "Restored";
+}
+
+/** Puts back the last deleted entry or folder. Bound to Ctrl+Z as well as the undo toast (M10). */
+export const undoDelete = () =>
+  attempt(async () => {
+    const restored = await backend.undoDelete();
+    if (!restored) {
+      toast("There is nothing to undo.", "info");
+      return;
+    }
+    await reloadVault();
+    toast(restoredMessage(restored), "success");
+  });
+
+/**
+ * A delete used to be final, with the only safety net a `.bak` the interface never exposed
+ * (the red-team report, M10). This offers an undo for the session; the core keeps just the last
+ * deletion, so a second delete replaces it.
+ */
+function offerUndo(message: string): void {
+  toast(message, "info", 8000, { label: "Undo", run: () => void undoDelete() });
+}
 
 export const moveEntry = (id: Uuid, folderId: Uuid | null) =>
   attempt(async () => {
@@ -330,7 +360,7 @@ export const deleteFolder = (id: Uuid) =>
     if (!confirmed) return;
     await backend.deleteFolder(id);
     await reloadVault();
-    toast("Folder deleted");
+    offerUndo("Folder deleted");
   });
 
 export function selectView(view: typeof store.view): void {
@@ -470,6 +500,7 @@ export const showShortcuts = () =>
       ["Ctrl+B", "Copy the username"],
       ["Ctrl+U", "Open the web address"],
       ["Delete", "Delete the selected entry"],
+      ["Ctrl+Z", "Undo the last delete"],
       ["Ctrl+F", "Search"],
       ["Ctrl+G", "Password generator"],
       ["Ctrl+L", "Lock the vault"],

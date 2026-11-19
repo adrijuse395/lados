@@ -204,6 +204,7 @@ pub fn run() {
             commands::entries::duplicate_entry,
             commands::entries::move_entry,
             commands::entries::delete_entry,
+            commands::entries::undo_delete,
             commands::entries::reveal_field,
             commands::entries::copy_field,
             commands::entries::get_entry_history,

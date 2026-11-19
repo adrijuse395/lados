@@ -1333,6 +1333,29 @@ select.input.compact {
   height: 16px;
 }
 
+.toast-action {
+  margin-left: 4px;
+  padding: 3px 10px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  /* The toast layer ignores pointer events; the button has to take them back. */
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
+}
+
 .toast-info .icon {
   color: #84adff;
 }
