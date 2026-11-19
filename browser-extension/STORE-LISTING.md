@@ -4,7 +4,7 @@ Copy‑paste fields for the **Chrome Web Store** and **Microsoft Edge Add‑ons*
 Firefox (AMO) is already published; its fields are the same.
 
 - Package: `browser-extension/build/lados-chrome.zip` (rebuild with `python3 scripts/build-extension.py`)
-- Version: `0.4.0` (from `manifest.chrome.json`)
+- Version: `0.4.1` (from `manifest.chrome.json`)
 - Icon: `browser-extension/icons/icon-128.png`
 
 ---
@@ -48,6 +48,26 @@ Privacy policy: https://ladospwm.vercel.app/privacy
 
 (Chrome/Edge take the same wording: Chrome’s “What’s new in this version” gets the release note,
 and its privacy questionnaire is already covered above.)
+
+---
+
+## Firefox (AMO) 0.4.1 — release notes & notes to reviewer
+
+**Release notes** (shown to users):
+
+```
+Filling is more careful: a login field a page hides or moves off-screen is no longer filled.
+```
+
+**Notes to reviewer:**
+
+```
+One behaviour change, in content.js only. `isVisible` now also checks each field's bounding box
+against the viewport, plus its opacity and size, so a password field that a page has moved
+off-screen (the classic `position:absolute; left:-9999px` trap) or made invisible is skipped instead
+of filled. That is the honeypot pattern: the field the page controls received the password while the
+visible one stayed empty. No manifest, permission or network change.
+```
 
 ---
 

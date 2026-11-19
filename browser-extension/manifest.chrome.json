@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lados",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Autofill logins from your local Lados vault. Offline, no account, no cloud.",
   "homepage_url": "https://github.com/ladospwm/lados",
   "minimum_chrome_version": "116",

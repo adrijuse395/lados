@@ -55,8 +55,19 @@
     if (!(el instanceof HTMLElement)) return false;
     if (el.disabled || el.readOnly) return false;
     const style = getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    return !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    const rect = el.getBoundingClientRect();
+    // A zero-sized field, or one a page moved off the viewport (the classic
+    // `position:absolute; left:-9999px` trap), is invisible to the user: never fill it. Filling a
+    // honeypot puts the password in a field the page — not the user — controls (the report, M16).
+    if (rect.width < 1 || rect.height < 1) return false;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (viewportWidth > 0 && viewportHeight > 0) {
+      if (rect.right <= 0 || rect.bottom <= 0) return false;
+      if (rect.left >= viewportWidth || rect.top >= viewportHeight) return false;
+    }
+    return true;
   }
 
   function pickUsername(scope) {
