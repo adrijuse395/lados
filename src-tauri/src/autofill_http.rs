@@ -1,5 +1,11 @@
-//! Localhost autofill bridge for the Chromium sideload extension (desktop only).
+//! Localhost autofill bridge for the browser extension (desktop only).
 //! Listens on 127.0.0.1:18765 — never binds to a public interface.
+//!
+//! Two gates, because the caller is a *browser*:
+//! - **Pairing** — the extension must present a secret this app generated. It keeps web pages,
+//!   other extensions and scripts that merely knock on the port out.
+//! - **Consent** — a password is handed over only after the user allows it *in the app*. A local
+//!   program can read the secret above (it is on disk); it cannot click "Allow".
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -8,9 +14,10 @@ use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
+use crate::settings::AutofillReveal;
 use crate::state::{AppState, Session};
 use crate::views::UrlMatchHit;
 
@@ -110,6 +117,17 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
         return;
     }
 
+    // ...and it must know the pairing code. A web page, another extension or a script that merely
+    // knocks on the port is refused here. A local program that *reads* the code (it is stored as
+    // plain text) still cannot obtain a password: that is confirmed by the user — see `reveal_for`.
+    let paired = app.try_state::<AppState>().is_some_and(|state| {
+        state.autofill_paired(header_value(&request, "x-lados-token").as_deref())
+    });
+    if !paired {
+        respond(&mut stream, 403, r#"{"error":"not paired"}"#, Some(origin.as_str()));
+        return;
+    }
+
     let cors = Some(origin.as_str());
 
     if method == "OPTIONS" {
@@ -183,11 +201,58 @@ fn entries_for(app: &AppHandle, page_url: &str) -> Result<String, u16> {
     serde_json::to_string(&EntriesBody { entries: payload }).map_err(|_| 500_u16)
 }
 
-/// Hands over one entry's secrets, and only while the vault is unlocked.
-/// The extension calls this at the moment the user chooses to fill.
+/// Hands over one entry's secrets, and only while the vault is unlocked. Depending on the
+/// preference the user is asked in the app first: a program on this machine can read the pairing
+/// code, but it cannot click "Allow".
 fn reveal_for(app: &AppHandle, id: &str) -> Result<String, u16> {
     let id = Uuid::parse_str(id).map_err(|_| 404_u16)?;
     let state = app.try_state::<AppState>().ok_or(503_u16)?;
+
+    // What is being asked for, so the prompt can name it. Carries no secret.
+    let (vault_id, title, username, url) = state
+        .with_vault(|open| {
+            let entry = open.vault().entry(id)?;
+            Ok((
+                open.vault().id.to_string(),
+                entry.content.title.clone(),
+                entry.content.username.clone(),
+                entry.content.url.clone(),
+            ))
+        })
+        .map_err(|_| 401_u16)?;
+
+    let entry_id = id.to_string();
+    let mode = state.settings().preferences.autofill_reveal;
+    let already_allowed = mode == AutofillReveal::OncePerSite && state.reveal_entry_allowed(&vault_id, &entry_id);
+
+    if mode != AutofillReveal::Never && !already_allowed {
+        let (request_id, answer) = state.register_reveal();
+        let _ = app.emit(
+            "autofill-reveal",
+            serde_json::json!({
+                "id": request_id.to_string(),
+                "title": title,
+                "username": username,
+                "url": url,
+            }),
+        );
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+        match answer.recv_timeout(Duration::from_secs(30)) {
+            Ok(true) => {
+                if mode == AutofillReveal::OncePerSite {
+                    state.allow_reveal_entry(&vault_id, &entry_id);
+                }
+            }
+            // Denied, unanswered, or the vault locked while the prompt was up.
+            _ => return Err(403_u16),
+        }
+    }
+
+    // Read it now, after the decision: the vault may have locked or changed in the meantime.
     let body = state
         .with_vault(|open| {
             let entry = open.vault().entry(id)?;

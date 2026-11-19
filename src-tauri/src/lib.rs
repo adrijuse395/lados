@@ -94,6 +94,9 @@ pub fn run() {
             }
             let config_dir = app.path().app_config_dir()?;
             app.manage(AppState::new(config_dir, vault_from_arguments()));
+            // Make sure a pairing code exists before the autofill bridge can be reached, so Settings
+            // always has one to show.
+            let _ = app.state::<AppState>().autofill_token();
             #[cfg(desktop)]
             tray::create(app.handle())?;
             background::start(app.handle().clone());
@@ -155,6 +158,8 @@ pub fn run() {
             commands::recovery::create_recovery_key,
             commands::recovery::recover_vault,
             commands::recovery::check_recovery_key,
+            commands::autofill::autofill_pairing_token,
+            commands::autofill::autofill_answer,
             commands::vault::get_vault_view,
             commands::vault::rename_vault,
             commands::vault::pick_open_path,

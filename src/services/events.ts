@@ -1,7 +1,7 @@
 // Notifications pushed by the Rust core (automatic lock, changes made in another window, ...).
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { LockReason, MergeReport } from "../types";
+import type { AutofillRevealRequest, LockReason, MergeReport } from "../types";
 
 export interface BackendEventHandlers {
   vaultLocked(reason: LockReason): void;
@@ -11,6 +11,8 @@ export interface BackendEventHandlers {
   vaultDiverged(copyPath: string): void;
   syncError(message: string): void;
   clipboardCleared(): void;
+  /** The browser extension wants to fill a login and needs the user's answer. */
+  autofillReveal(request: AutofillRevealRequest): void;
 }
 
 export async function listenToBackend(handlers: BackendEventHandlers): Promise<UnlistenFn> {
@@ -20,6 +22,7 @@ export async function listenToBackend(handlers: BackendEventHandlers): Promise<U
     listen<string>("vault-diverged", (event) => handlers.vaultDiverged(event.payload)),
     listen<string>("vault-sync-error", (event) => handlers.syncError(event.payload)),
     listen("clipboard-cleared", () => handlers.clipboardCleared()),
+    listen<AutofillRevealRequest>("autofill-reveal", (event) => handlers.autofillReveal(event.payload)),
   ]);
   return () => unlisteners.forEach((unlisten) => unlisten());
 }

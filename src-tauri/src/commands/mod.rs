@@ -47,6 +47,7 @@ const MAX_ICON_BYTES: usize = 512 * 1024;
 pub const API_REVISION: u32 = 3;
 
 pub mod account;
+pub mod autofill;
 pub mod billing;
 pub mod entries;
 pub mod recovery;
@@ -66,8 +67,11 @@ pub enum LockReason {
 
 /// Wipes the decrypted vault from memory and removes any copied secret from the clipboard.
 pub fn lock_now(app: &AppHandle, reason: LockReason) -> bool {
-    let locked = app.state::<AppState>().session().lock();
+    let state = app.state::<AppState>();
+    let locked = state.session().lock();
     if locked {
+        // A locked vault must not leave an "allow this fill?" prompt answerable.
+        state.cancel_reveals();
         clipboard::clear_now(app);
         let _ = app.emit("vault-locked", reason);
     }
@@ -85,6 +89,7 @@ pub fn cleanup(app: &AppHandle) {
     state.begin_quit();
     clipboard::clear_now(app);
     state.session().lock();
+    state.cancel_reveals();
 }
 
 /// A conflict copy joins the recent vaults, with the same key file as the original.

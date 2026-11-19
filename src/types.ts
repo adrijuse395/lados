@@ -5,6 +5,8 @@ export type Uuid = string;
 /** Core session: prefer UI wording “No vault” / “Locked” / “Unlocked” (not “Closed”). */
 export type SessionState = "closed" | "locked" | "unlocked";
 export type Theme = "system" | "light" | "dark";
+/** How the browser extension may be handed a password. */
+export type AutofillReveal = "always" | "oncePerSite" | "never";
 export type LockReason = "user" | "inactivity" | "tray";
 export type FileKind = "vault" | "keyFile" | "csv" | "kdbx" | "image" | "recovery";
 
@@ -65,7 +67,17 @@ export interface Preferences {
   closeToTray: boolean;
   /** Folder new vaults are created in and downloads land in; null = the default. */
   vaultsFolder: string | null;
+  /** Whether the browser extension must be confirmed here before a password is handed over. */
+  autofillReveal: AutofillReveal;
   generator: GeneratorOptions;
+}
+
+/** A request from the browser extension to fill one login; the user approves it in the app. */
+export interface AutofillRevealRequest {
+  id: string;
+  title: string;
+  username: string;
+  url: string | null;
 }
 
 export interface RecentVault {

@@ -4,6 +4,7 @@ import "./styles/components.css";
 
 import { refreshStatus, reloadVault, showStatus } from "./app";
 import { describeChanges, hasChanges } from "./dialogs/reports";
+import { askAutofillReveal } from "./dialogs/autofill";
 import { installShortcuts } from "./screens/vault";
 import { backend } from "./services/backend";
 import { listenToBackend } from "./services/events";
@@ -64,6 +65,9 @@ async function start(): Promise<void> {
     },
     clipboardCleared() {
       toast("The clipboard was cleared");
+    },
+    autofillReveal(request) {
+      void askAutofillReveal(request);
     },
   });
 

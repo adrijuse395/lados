@@ -3,13 +3,17 @@
 //!
 //! Lock order, to rule out deadlocks: `session` before `settings`, and never the other way.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
+use uuid::Uuid;
+use zeroize::Zeroizing;
+
 use crate::clipboard::ClipboardState;
+use crate::crypto;
 use crate::error::{Error, Result};
 use crate::session::OpenVault;
 use crate::settings::Settings;
@@ -60,6 +64,18 @@ pub fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Compares two byte strings without leaking where they first differ.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut difference = 0u8;
+    for (x, y) in a.iter().zip(b) {
+        difference |= x ^ y;
+    }
+    difference == 0
+}
+
 /// When the running executable was last written, in Unix milliseconds: "which build am I running?"
 /// without having to inspect the binary by hand.
 fn built_at() -> u64 {
@@ -95,6 +111,10 @@ pub struct AppState {
     last_activity: Mutex<Instant>,
     pub clipboard: ClipboardState,
     quitting: AtomicBool,
+    /// Autofill reveal requests still waiting for the user's answer in the interface.
+    pending_reveals: Mutex<HashMap<Uuid, mpsc::Sender<bool>>>,
+    /// Entries the user already allowed this session, for the "once per entry" mode.
+    allowed_reveals: Mutex<HashSet<(String, String)>>,
 }
 
 impl AppState {
@@ -114,6 +134,8 @@ impl AppState {
             last_activity: Mutex::new(Instant::now()),
             clipboard: ClipboardState::default(),
             quitting: AtomicBool::new(false),
+            pending_reveals: Mutex::new(HashMap::new()),
+            allowed_reveals: Mutex::new(HashSet::new()),
         }
     }
 
@@ -146,6 +168,73 @@ impl AppState {
 
     pub fn is_quitting(&self) -> bool {
         self.quitting.load(Ordering::SeqCst)
+    }
+
+    // ----- Autofill pairing and consent -----
+
+    /// The secret the browser extension must present to the autofill bridge. Created on first use
+    /// and kept locally. It is stored in clear, so a program running as the user can read it — which
+    /// is why handing over a *password* is confirmed in the app instead of trusted to this alone.
+    pub fn autofill_token(&self) -> Result<String> {
+        if let Some(token) = self.settings().autofill_token.clone() {
+            return Ok(token);
+        }
+        let generated = {
+            let key = Zeroizing::new(crypto::random_bytes::<32>()?);
+            key.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+        };
+        let mut token = generated.clone();
+        self.update_settings(|settings| {
+            token = settings.autofill_token.get_or_insert(generated).clone();
+        })?;
+        Ok(token)
+    }
+
+    /// Replaces the pairing secret, so an old code stops working and the extension must pair again.
+    pub fn reset_autofill_token(&self) -> Result<String> {
+        self.update_settings(|settings| settings.autofill_token = None)?;
+        self.autofill_token()
+    }
+
+    /// Whether the extension may talk to the bridge at all.
+    pub fn autofill_paired(&self, given: Option<&str>) -> bool {
+        let Some(expected) = self.settings().autofill_token.clone() else {
+            return false;
+        };
+        match given {
+            Some(given) => constant_time_eq(given.as_bytes(), expected.as_bytes()),
+            None => false,
+        }
+    }
+
+    /// Registers a reveal request; the interface answers it through `answer_reveal`.
+    pub fn register_reveal(&self) -> (Uuid, mpsc::Receiver<bool>) {
+        let (sender, receiver) = mpsc::channel();
+        let id = Uuid::new_v4();
+        lock(&self.pending_reveals).insert(id, sender);
+        (id, receiver)
+    }
+
+    /// Answers a pending request. False when it already expired, was answered, or never existed.
+    pub fn answer_reveal(&self, id: Uuid, allow: bool) -> bool {
+        match lock(&self.pending_reveals).remove(&id) {
+            Some(sender) => sender.send(allow).is_ok(),
+            None => false,
+        }
+    }
+
+    /// Drops every pending request and grant, so a locked vault cannot leave a prompt answerable.
+    pub fn cancel_reveals(&self) {
+        lock(&self.pending_reveals).clear();
+        lock(&self.allowed_reveals).clear();
+    }
+
+    pub fn allow_reveal_entry(&self, vault_id: &str, entry_id: &str) {
+        lock(&self.allowed_reveals).insert((vault_id.to_owned(), entry_id.to_owned()));
+    }
+
+    pub fn reveal_entry_allowed(&self, vault_id: &str, entry_id: &str) -> bool {
+        lock(&self.allowed_reveals).contains(&(vault_id.to_owned(), entry_id.to_owned()))
     }
 
     pub fn status(&self) -> AppStatus {
@@ -260,5 +349,19 @@ impl AppState {
             Session::Locked { .. } => Err(Error::Locked),
             Session::Closed => Err(Error::NoVaultSelected),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_eq;
+
+    #[test]
+    fn the_pairing_code_is_compared_without_an_early_exit() {
+        assert!(constant_time_eq(b"a1b2c3", b"a1b2c3"));
+        assert!(!constant_time_eq(b"a1b2c3", b"a1b2c4"));
+        assert!(!constant_time_eq(b"short", b"longer"));
+        assert!(!constant_time_eq(b"", b"x"));
+        assert!(constant_time_eq(b"", b""));
     }
 }

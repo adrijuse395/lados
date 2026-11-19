@@ -23,6 +23,20 @@ pub enum Theme {
     Dark,
 }
 
+/// How the browser extension may be handed a password. A program on the same machine can read
+/// anything the user can, so the default asks the user in the app: a process cannot click "Allow".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AutofillReveal {
+    /// Ask in the app on every fill. The default.
+    #[default]
+    Always,
+    /// Ask once per entry, then allow that entry for the rest of the session.
+    OncePerSite,
+    /// Hand it over without asking. What earlier versions did.
+    Never,
+}
+
 /// What the user can change in the settings dialog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -37,6 +51,8 @@ pub struct Preferences {
     /// Folder new vaults are created in and downloads land in. `None` = the default
     /// (`Documents/Lados`). The user can point it elsewhere.
     pub vaults_folder: Option<String>,
+    /// Whether the browser extension must be confirmed in the app before a password is handed over.
+    pub autofill_reveal: AutofillReveal,
     pub generator: GeneratorOptions,
 }
 
@@ -48,6 +64,7 @@ impl Default for Preferences {
             clipboard_clear_seconds: 20,
             close_to_tray: true,
             vaults_folder: None,
+            autofill_reveal: AutofillReveal::Always,
             generator: GeneratorOptions::default(),
         }
     }
@@ -126,6 +143,10 @@ pub struct Settings {
     pub synced_vaults: Vec<SyncedVault>,
     /// Key that encrypts vault labels for the server (base64). Local only; not security-critical.
     pub sync_label_key: Option<String>,
+    /// Secret the browser extension must present to the autofill bridge. Local only; created on
+    /// first use. It lives in this file in clear — anything running as the user can read it, which
+    /// is why the *reveal* is confirmed in the app rather than trusted to this value alone.
+    pub autofill_token: Option<String>,
 }
 
 impl Settings {

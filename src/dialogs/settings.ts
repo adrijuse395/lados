@@ -3,7 +3,7 @@ import { extensionInstallDialog, openBrowserDownload, openExtensionStore } from 
 import { backend } from "../services/backend";
 import { checkForAppUpdateInteractive } from "../services/updater";
 import { preferences, store } from "../state/store";
-import type { Preferences, Theme } from "../types";
+import type { AutofillReveal, Preferences, Theme } from "../types";
 import { field, segmented, selectInput, toggleSwitch } from "../ui/controls";
 import { h } from "../ui/dom";
 import { svgIcon } from "../ui/icons";
@@ -42,6 +42,28 @@ export async function openSettings(): Promise<void> {
   const mobile = await backend.isMobileShell().catch(() => false);
   const autostart = mobile ? false : await backend.getAutostart().catch(() => false);
   const browsers = mobile ? null : await backend.detectedBrowsers().catch(() => null);
+
+  // The pairing code the extension must be given. It already exists (the app creates it at start),
+  // so failing here only hides the section rather than breaking Settings.
+  const autofillCode = mobile ? null : await backend.autofillPairingToken().catch(() => null);
+  const autofillCodeText = h("p", { class: "path-box", text: autofillCode ?? "" });
+  const regenerateAutofillCode = async () => {
+    try {
+      autofillCodeText.textContent = await backend.autofillPairingToken(true);
+      toast("New pairing code created — pair the extension again", "success", 9000);
+    } catch (error) {
+      toastError(error);
+    }
+  };
+  const revealMode = segmented<AutofillReveal>(
+    [
+      { value: "always", label: "Ask every time" },
+      { value: "oncePerSite", label: "Ask once per entry" },
+      { value: "never", label: "Never ask" },
+    ],
+    current.autofillReveal,
+    (value) => void save((preferences) => (preferences.autofillReveal = value)),
+  );
 
   const theme = segmented<Theme>(
     [
@@ -191,6 +213,43 @@ export async function openSettings(): Promise<void> {
               { type: "button", class: "button", onClick: () => void extensionInstallDialog() },
               "Install the browser extension",
             ),
+          ),
+      mobile || !autofillCode
+        ? null
+        : h(
+            "section",
+            { class: "settings-section" },
+            h("h3", { text: "Browser pairing" }),
+            h("p", {
+              class: "muted",
+              text: "Paste this code once into the Lados extension. Without it the extension cannot reach this app — and neither can a web page, another extension, or a script on this computer. Every password the extension asks for must still be allowed here first.",
+            }),
+            autofillCodeText,
+            h(
+              "div",
+              { class: "browser-choices" },
+              h(
+                "button",
+                {
+                  type: "button",
+                  class: "button",
+                  onClick: () =>
+                    void backend
+                      .copySecretText(autofillCode)
+                      .then(() => toast("Pairing code copied"))
+                      .catch(toastError),
+                },
+                "Copy the code",
+              ),
+              h(
+                "button",
+                { type: "button", class: "button", onClick: () => void regenerateAutofillCode() },
+                "New code",
+              ),
+            ),
+            field("When the extension asks for a password", revealMode, {
+              hint: "“Ask every time” is the safest: a program on this computer cannot answer the prompt.",
+            }),
           ),
       h(
         "section",

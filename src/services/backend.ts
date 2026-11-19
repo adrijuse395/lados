@@ -84,6 +84,12 @@ export const backend = {
     call<RecoveryView>("recover_vault", { recoveryFile, newPassword, newKeyFile }),
   /** Checks a recovery key file against your vaults, without opening or changing anything. */
   checkRecoveryKey: (recoveryFile: string) => call<RecoveryCheckView>("check_recovery_key", { recoveryFile }),
+
+  // Browser autofill bridge
+  /** The pairing code the extension must be given. Pass `reset` to replace it. */
+  autofillPairingToken: (reset = false) => call<string>("autofill_pairing_token", { reset }),
+  /** Answers the reveal prompt the user was shown. */
+  autofillAnswer: (id: string, allow: boolean) => call<void>("autofill_answer", { id, allow }),
   getVaultView: () => call<VaultView>("get_vault_view"),
   renameVault: (name: string) => call<void>("rename_vault", { name }),
 
