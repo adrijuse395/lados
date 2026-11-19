@@ -359,12 +359,13 @@ mod tests {
     fn sync_auth_secret_matches_the_seed_script() {
         // A seeded account must sign in from the app, which sends this exact secret to OPAQUE.
         // `sync-server/scripts/seed-account.mjs` reproduces the derivation; if either side drifts,
-        // the seeded accounts stop working (the red-team report, I1).
-        let composite = composite_key("REDACTED-STAGING-PASSWORD", None);
-        let secret = sync_auth_secret(&composite, "explorer@example.com").unwrap();
+        // the seeded accounts stop working (the red-team report, I1). The password here is a
+        // throwaway vector, never a real account's.
+        let composite = composite_key("seed-vector-password-2026", None);
+        let secret = sync_auth_secret(&composite, "seed-vector@example.test").unwrap();
         assert_eq!(
             secret,
-            "2547be07fc2e5b35492ae359bce6e172c76c6bf17bde76c892de4d4d056738ff"
+            "25f18e825f404e5e374944b011df37ac74bb59f76db379e0a57258f7a87d98ee"
         );
     }
 }

@@ -8,13 +8,13 @@
 // produces an account the app can never open — the `explorer@example.com` mismatch in the
 // red-team report (I1) — so this script reproduces the app's derivation first.
 //
-//   BASE_URL=https://lados-sync-staging.ladospwm.workers.dev \
-//     node scripts/seed-account.mjs explorer@example.com 'REDACTED-STAGING-PASSWORD'
+//   BASE_URL=https://lados-sync-staging.<subdomain>.workers.dev \
+//     node scripts/seed-account.mjs <email> <password>
 //
 // Registering an email that already exists returns 409. To re-seed one, delete the old row first:
 //
 //   npx wrangler d1 execute lados-sync-staging --remote \
-//     --command "DELETE FROM accounts WHERE email='explorer@example.com'"
+//     --command "DELETE FROM accounts WHERE email='<email>'"
 //
 // Self-check (no network), against the value pinned in `src-tauri/src/crypto.rs`:
 //
@@ -48,11 +48,12 @@ export function authSecret(password, email) {
   return [...secret].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-// The Rust test `sync_auth_secret_matches_the_seed_script` asserts the same value.
+// The Rust test `sync_auth_secret_matches_the_seed_script` asserts the same value. This is a
+// throwaway vector, never a real account's.
 const CHECK = {
-  password: "REDACTED-STAGING-PASSWORD",
-  email: "explorer@example.com",
-  secret: "2547be07fc2e5b35492ae359bce6e172c76c6bf17bde76c892de4d4d056738ff",
+  password: "seed-vector-password-2026",
+  email: "seed-vector@example.test",
+  secret: "25f18e825f404e5e374944b011df37ac74bb59f76db379e0a57258f7a87d98ee",
 };
 
 function selfCheck() {

@@ -131,7 +131,7 @@ registers the raw password produces an account the app can never sign in to (rep
 
 ```
 BASE_URL=https://lados-sync-staging.<subdomain>.workers.dev \
-  node sync-server/scripts/seed-account.mjs explorer@example.com 'REDACTED-STAGING-PASSWORD'
+  node sync-server/scripts/seed-account.mjs <email> '<password>'
 ```
 
 `node sync-server/scripts/seed-account.mjs --check` (or `npm run seed:check` there) verifies the
