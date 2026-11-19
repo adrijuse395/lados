@@ -76,6 +76,8 @@ pub struct SyncView {
     pub cloud: Vec<CloudVaultView>,
     /// Vaults on this device that are not synced.
     pub local: Vec<LocalVaultView>,
+    /// A synced vault was recovered while signed out, so the account password no longer matches it.
+    pub pending_account_password: bool,
 }
 
 /// A vault that has a cloud copy, with the local copies on this device.

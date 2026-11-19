@@ -454,6 +454,17 @@ pub async fn sync_now(app: AppHandle) -> Result<MergeReport> {
                 return Err(Error::invalid("This vault is not the one set up for sync"));
             }
             let remote = crate::sync::HttpRemote::new(&base, &token);
+            // The cloud copy may have been deleted on another device. Say so and stop syncing,
+            // rather than failing inside the merge with no explanation (the red-team report, M5).
+            {
+                use crate::sync::Remote;
+                if last_version.is_some() && remote.get(&server_vault_id)?.is_none() {
+                    state.update_settings(|settings| settings.forget_synced_vault(&path))?;
+                    return Err(Error::invalid(
+                        "This vault was removed from the cloud on another device, so it is no longer synced here. The file is kept; to upload it again, open Sync settings and sync this vault again.",
+                    ));
+                }
+            }
             let outcome = state.with_vault_mut(|open| open.sync_remote(&remote, &server_vault_id, last_version));
             let (report, version) = match outcome {
                 Ok(value) => value,

@@ -331,6 +331,7 @@ impl AppState {
                     plan_valid_until: account.and_then(|account| account.plan_valid_until),
                     cloud,
                     local,
+                    pending_account_password: settings.pending_account_password,
                 }
             },
         }

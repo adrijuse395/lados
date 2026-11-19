@@ -706,7 +706,21 @@ function signedInSections(cloud: CloudVault[], refresh: () => void): Child[] {
     }),
   );
 
-  return [accountCard, mapCard, deviceCard];
+  // A vault that was recovered while signed out no longer matches the account password. Say so here,
+  // with the next step, instead of letting it surface later as a bare "Sync failed" (M6).
+  const pendingPassword = sync.pendingAccountPassword
+    ? h(
+        "section",
+        { class: "sync-card" },
+        h("h3", { class: "sync-card-title" }, "A recovered vault is out of step"),
+        h("p", {
+          class: "muted",
+          text: "This vault was opened with a recovery key while you were signed out, so it uses a different password from your account. Use “Change master password” below to set the account — and every synced vault — to that password.",
+        }),
+      )
+    : null;
+
+  return [pendingPassword, accountCard, mapCard, deviceCard].filter((card): card is HTMLElement => card !== null);
 }
 
 /** Asks for the master password and a folder, then downloads the cloud vault into it. */

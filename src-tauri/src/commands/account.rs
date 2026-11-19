@@ -161,6 +161,8 @@ pub async fn change_master_password(
             // 6. Remember the new label key and when the password changed.
             state.update_settings(|settings| {
                 settings.sync_label_key = Some(crypto::secret_to_base64(&new_label));
+                // Every synced vault has just been re-keyed, so any earlier mismatch is gone.
+                settings.pending_account_password = false;
                 if let Some(account) = settings.sync_account.as_mut() {
                     account.password_changed_at = Some(chrono::Utc::now().timestamp_millis());
                 }

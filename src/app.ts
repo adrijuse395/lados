@@ -81,6 +81,13 @@ export async function performSync(): Promise<MergeReport> {
     return report;
   } catch (error) {
     store.syncError = errorMessage(error);
+    // Reflect reality at once: the vault may have been removed from the cloud, or the session may
+    // have ended. Leaving a stale "Synced · just now" next to a failure is what misleads (M5).
+    try {
+      store.status = await backend.getStatus();
+    } catch {
+      // Keep the message we already have.
+    }
     if (error instanceof BackendError && error.kind === "sessionExpired") {
       // The session ended (for example the master password changed elsewhere): sign out locally
       // and tell the user, instead of failing silently on every later sync.

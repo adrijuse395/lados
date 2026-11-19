@@ -143,6 +143,10 @@ pub struct Settings {
     pub synced_vaults: Vec<SyncedVault>,
     /// Key that encrypts vault labels for the server (base64). Local only; not security-critical.
     pub sync_label_key: Option<String>,
+    /// A synced vault was recovered while signed out, so its password no longer matches the
+    /// account's. The sync space says so instead of failing later with "Sync failed".
+    #[serde(default)]
+    pub pending_account_password: bool,
     /// Secret the browser extension must present to the autofill bridge. Local only; created on
     /// first use. It lives in this file in clear — anything running as the user can read it, which
     /// is why the *reveal* is confirmed in the app rather than trusted to this value alone.

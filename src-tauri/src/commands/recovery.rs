@@ -227,6 +227,15 @@ fn recover_with_key(
     #[cfg(not(feature = "sync"))]
     let account_updated = false;
 
+    // Signed out, a recovered synced vault no longer matches the account password. Remember that, so
+    // the sync space can explain it rather than failing later with a bare "Sync failed" (M6).
+    if !account_updated
+        && let Some(path) = &open_path
+        && state.settings().synced_vault(path).is_some()
+    {
+        state.update_settings(|settings| settings.pending_account_password = true)?;
+    }
+
     let uncovered = uncovered_synced(state, &restored);
     let logged_in = state.settings().sync_account.is_some();
 

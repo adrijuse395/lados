@@ -133,6 +133,8 @@ export interface SyncView {
   cloud: CloudVaultView[];
   /** Vaults on this device that are not synced. */
   local: LocalVaultView[];
+  /** A synced vault was recovered while signed out, so the account password no longer matches it. */
+  pendingAccountPassword: boolean;
 }
 
 /** A vault that has a cloud copy, with the local copies on this device. */
