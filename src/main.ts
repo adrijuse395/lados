@@ -5,6 +5,7 @@ import "./styles/components.css";
 import { refreshStatus, reloadVault, showStatus } from "./app";
 import { describeChanges, hasChanges } from "./dialogs/reports";
 import { askAutofillReveal } from "./dialogs/autofill";
+import { captureUnsavedEditor } from "./dialogs/entry-editor";
 import { installShortcuts } from "./screens/vault";
 import { backend } from "./services/backend";
 import { listenToBackend } from "./services/events";
@@ -35,6 +36,8 @@ async function start(): Promise<void> {
 
   await listenToBackend({
     vaultLocked(reason) {
+      // Remember whatever the entry editor holds before its dialog is closed (H4).
+      captureUnsavedEditor();
       if (store.status?.state !== "unlocked") return;
       void refreshStatus().catch(toastError);
       if (reason === "inactivity") toast("The vault was locked after a period of inactivity");

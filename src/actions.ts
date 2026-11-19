@@ -9,6 +9,7 @@ import { openFolderEditor } from "./dialogs/folder-editor";
 import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
 import { checkRecoveryKeyDialog, createRecoveryKeyDialog } from "./dialogs/recovery";
+import { captureUnsavedEditor } from "./dialogs/entry-editor";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
 import { openChangeMasterPassword, openSyncCenter } from "./dialogs/sync-center";
@@ -57,7 +58,12 @@ export function selectEntry(id: Uuid | null): void {
 
 // ----- Session -----
 
-export const lockVault = () => attempt(async () => showStatus(await backend.lockVault()));
+export const lockVault = () =>
+  attempt(async () => {
+    // Capture before the lock closes the editor dialog (the event path covers auto-lock).
+    captureUnsavedEditor();
+    showStatus(await backend.lockVault());
+  });
 export const closeVault = () => attempt(async () => showStatus(await backend.closeVault()));
 export const quit = () => attempt(() => backend.quit());
 

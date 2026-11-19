@@ -12,6 +12,7 @@ import { closeMenu } from "./ui/menu";
 import { closeAllModals } from "./ui/modal";
 import { errorMessage, toast } from "./ui/toast";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
+import { maybeRestoreUnsavedEditor } from "./dialogs/entry-editor";
 
 function root(): HTMLElement {
   const element = document.getElementById("app");
@@ -117,6 +118,7 @@ export async function showStatus(status: AppStatus): Promise<void> {
     void syncAutofillCache();
     void maybeShowExtensionInstall();
     scheduleSync();
+    void restoreInterruptedEditor();
     return;
   }
 
@@ -136,6 +138,15 @@ export async function showStatus(status: AppStatus): Promise<void> {
 
 export async function refreshStatus(): Promise<void> {
   await showStatus(await backend.getStatus());
+}
+
+/** Carries on with an entry the auto-lock interrupted, once the vault is open again (H4). */
+async function restoreInterruptedEditor(): Promise<void> {
+  const restored = await maybeRestoreUnsavedEditor();
+  if (!restored) return;
+  store.selectedEntryId = restored;
+  await loadVault();
+  drawVault();
 }
 
 /** Fetches the vault summary again after a change and redraws the vault screen. */

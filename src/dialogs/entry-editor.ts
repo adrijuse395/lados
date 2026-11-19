@@ -86,13 +86,53 @@ function customFieldRow(initial: CustomField, onRemove: (row: CustomFieldRow) =>
   return row;
 }
 
+/** An entry editor that was interrupted (the vault locked) and has not been saved. Kept in memory
+ *  only: an auto-lock used to throw away whatever the user had typed. */
+export interface EditorDraft {
+  entryId: Uuid | null;
+  folderId: Uuid | null;
+  content: EntryContent;
+}
+
+/** While an editor dialog is open, reads its current state (null when nothing was changed). */
+let openEditor: (() => EditorDraft | null) | null = null;
+let unsavedEditor: EditorDraft | null = null;
+
+/** Remembers the open editor's unsaved work. Called just before the vault locks. */
+export function captureUnsavedEditor(): void {
+  const draft = openEditor?.() ?? null;
+  openEditor = null;
+  if (draft) unsavedEditor = draft;
+}
+
+/** Offers to carry on with the entry that the lock interrupted. Returns the restored entry id. */
+export async function maybeRestoreUnsavedEditor(): Promise<Uuid | null> {
+  const draft = unsavedEditor;
+  unsavedEditor = null;
+  if (!draft) return null;
+  const restore = await confirmDialog({
+    title: "You had an unsaved entry",
+    message: "The vault locked while you were editing, and the entry was not saved. Carry on where you left off?",
+    confirmLabel: "Restore it",
+  });
+  if (!restore) return null;
+  return openEntryEditor({ draft });
+}
+
 /** Creates an entry in `folderId`, or edits `entryId`. Resolves with the entry id. */
-export async function openEntryEditor(options: { entryId?: Uuid; folderId?: Uuid | null }): Promise<Uuid | null> {
-  const entryId = options.entryId ?? null;
-  const initial = entryId ? await backend.getEntryForEdit(entryId) : emptyContent();
-  const initialFolder = entryId
-    ? (store.vault?.entries.find((entry) => entry.id === entryId)?.folderId ?? null)
-    : (options.folderId ?? null);
+export async function openEntryEditor(options: {
+  entryId?: Uuid;
+  folderId?: Uuid | null;
+  draft?: EditorDraft;
+}): Promise<Uuid | null> {
+  const draft = options.draft ?? null;
+  const entryId = draft ? draft.entryId : (options.entryId ?? null);
+  const initial = draft ? draft.content : entryId ? await backend.getEntryForEdit(entryId) : emptyContent();
+  const initialFolder = draft
+    ? draft.folderId
+    : entryId
+      ? (store.vault?.entries.find((entry) => entry.id === entryId)?.folderId ?? null)
+      : (options.folderId ?? null);
   let icon: Icon | null = initial.icon;
 
   const title = h("input", { class: "input", value: initial.title, spellcheck: false, autocomplete: "off", "data-autofocus": "" });
@@ -197,7 +237,9 @@ export async function openEntryEditor(options: { entryId?: Uuid; folderId?: Uuid
     }
   });
 
-  return showDialog<Uuid>({
+  openEditor = () => (snapshot() === original ? null : { entryId, folderId: selectedFolder(), content: collect() });
+
+  const result = await showDialog<Uuid>({
     title: entryId ? "Edit entry" : "New entry",
     size: "large",
     body,
@@ -226,4 +268,6 @@ export async function openEntryEditor(options: { entryId?: Uuid; folderId?: Uuid
         danger: true,
       }),
   });
+  openEditor = null;
+  return result;
 }
