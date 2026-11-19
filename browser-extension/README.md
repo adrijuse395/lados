@@ -63,6 +63,10 @@ Produces (under `browser-extension/build/`, git-ignored):
 2. Upload `build/lados-firefox.zip` at <https://addons.mozilla.org/en-US/developers/>.
 3. Distribution: **On this site**.
 
+> **0.4.0 requires the app build that asks for pairing**, and adds the `storage` permission so the
+> extension can keep the pairing code. Publish it *before* (or together with) an app release that
+> requires pairing: the published 0.3.x sends no code and would be refused by the new bridge.
+
 **Chrome Web Store** — one‑time $5 developer fee:
 1. Upload `browser-extension/build/lados-chrome.zip` at <https://chrome.google.com/webstore/devconsole>.
 2. Fill the listing from [`STORE-LISTING.md`](./STORE-LISTING.md) (copy‑paste fields + checklist).
