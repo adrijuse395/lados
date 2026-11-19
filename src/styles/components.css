@@ -1356,6 +1356,30 @@ select.input.compact {
   outline-offset: 1px;
 }
 
+/* Full-window spinner for long work with no progress to report (M15). */
+.busy-overlay {
+  position: fixed;
+  z-index: 400;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 16, 0.4);
+}
+
+.busy-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 30px;
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-large);
+  color: var(--text);
+  font-size: 14px;
+}
+
 .toast-info .icon {
   color: #84adff;
 }
@@ -1565,6 +1589,22 @@ img.item-icon {
   overflow: auto;
   padding: 6px;
   outline: none;
+}
+
+/* Sits under the first page of a very large list; the exact total is always visible (M15). */
+.list-more {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.list-more .muted {
+  min-width: 0;
+  font-size: 12px;
 }
 
 .entry-row {

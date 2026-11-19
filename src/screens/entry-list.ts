@@ -13,6 +13,23 @@ import { ENTRY_DRAG_TYPE } from "./sidebar";
 
 let container: HTMLElement | null = null;
 
+/**
+ * Rendering tens of thousands of rows at once froze the interface for minutes and could push the
+ * web process past 2 GB (the red-team report, M15). The list now draws a first page and offers
+ * more, so it stays usable; the exact count is always shown and nothing is hidden silently.
+ */
+const LIST_PAGE = 300;
+let pageSize = LIST_PAGE;
+let pageKey = "";
+
+/** Identifies the view, so the page resets when the user moves to another list or vault. */
+function currentViewKey(): string {
+  const vault = store.vault?.path ?? "";
+  if (store.searchResults) return `${vault}|search:${store.query}`;
+  const view = store.view.kind === "folder" ? `folder:${store.view.id}` : store.view.kind;
+  return `${vault}|${view}`;
+}
+
 function hostOf(url: string): string {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/?#]/)[0].replace(/^www\./i, "");
 }
@@ -136,6 +153,14 @@ export function renderEntryList(target: HTMLElement): void {
   const entries = visibleEntries();
   const title = viewTitle();
 
+  const key = currentViewKey();
+  if (key !== pageKey) {
+    pageKey = key;
+    pageSize = LIST_PAGE;
+  }
+  const shown = entries.slice(0, pageSize);
+  const hidden = entries.length - shown.length;
+
   const sort = selectInput<SortOrder>(
     [
       { value: "title", label: "By title" },
@@ -160,17 +185,41 @@ export function renderEntryList(target: HTMLElement): void {
       sortable && entries.length > 1 ? sort : null,
     ),
     entries.length > 0
-      ? h(
-          "ul",
-          {
-            class: "entries",
-            role: "listbox",
-            tabIndex: 0,
-            "aria-label": title,
-            "aria-activedescendant": store.selectedEntryId ? `entry-${store.selectedEntryId}` : undefined,
-          },
-          entries.map(entryRow),
-        )
+      ? [
+          h(
+            "ul",
+            {
+              class: "entries",
+              role: "listbox",
+              tabIndex: 0,
+              "aria-label": title,
+              "aria-activedescendant": store.selectedEntryId ? `entry-${store.selectedEntryId}` : undefined,
+            },
+            shown.map(entryRow),
+          ),
+          hidden > 0
+            ? h(
+                "div",
+                { class: "list-more" },
+                h("span", {
+                  class: "muted",
+                  text: `Showing the first ${shown.length} of ${entries.length}. Search or open a folder to narrow them down.`,
+                }),
+                h(
+                  "button",
+                  {
+                    type: "button",
+                    class: "button small",
+                    onClick: () => {
+                      pageSize += LIST_PAGE;
+                      renderEntryList(target);
+                    },
+                  },
+                  `Show ${Math.min(LIST_PAGE, hidden)} more`,
+                ),
+              )
+            : null,
+        ]
       : emptyState(),
   );
   scrollToSelection();

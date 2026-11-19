@@ -28,6 +28,7 @@ import {
 import type { DeleteOutcome, EntryField, EntrySummary, MergeReport, Uuid } from "./types";
 import { field, fileNameOf } from "./ui/controls";
 import { h } from "./ui/dom";
+import { withBusy } from "./ui/busy";
 import { svgIcon } from "./ui/icons";
 import { alertDialog, confirmDialog, promptDialog, showDialog } from "./ui/modal";
 import { toast, toastError, errorMessage } from "./ui/toast";
@@ -391,8 +392,11 @@ export const importCsv = () =>
   attemptSticky(async () => {
     const path = await backend.pickOpenPath("csv", "Import a CSV file");
     if (!path) return;
-    const summary = await backend.importCsv(path);
-    await reloadVault();
+    const summary = await withBusy("Importing entries…", async () => {
+      const result = await backend.importCsv(path);
+      await reloadVault();
+      return result;
+    });
     showImportSummary(summary);
   });
 
@@ -409,7 +413,7 @@ export const importKdbx = () =>
       action: ({ password, keyFile }) => backend.importKdbx(path, password, keyFile),
     });
     if (!summary) return;
-    await reloadVault();
+    await withBusy("Loading the vault…", () => reloadVault());
     showImportSummary(summary);
   });
 
@@ -487,7 +491,7 @@ export const mergeVault = () =>
       });
     }
     if (!report) return;
-    await reloadVault();
+    await withBusy("Loading the vault…", () => reloadVault());
     showMergeReport(report);
   });
 
