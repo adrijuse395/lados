@@ -50,11 +50,15 @@ not.
 - The **staging sync Worker** and every endpoint it exposes.
 - The **public website** (the `lados-web` project).
 - The **designated test accounts** — and only those.
+- The **owner's own configuration** of the services used: the Worker's bindings, routes and DNS, the
+  repository and its secrets, the Paddle **sandbox**, and the store listings. Read and verified —
+  never changed, and without spending real money.
 
 ### Out of scope — hard boundaries
 
-- **Cloudflare's own infrastructure** (only our Worker on it).
-- **Email providers** (Gmail, Outlook) and any third-party account.
+- **The providers' own systems** (Cloudflare's infrastructure, Gmail/Outlook, the stores' back ends)
+  and **any account that is not the owner's** — never try to break into them or touch another tenant.
+- **Changing configuration.** Report a wrong setting; do not change it.
 - **Paddle production**, and any payment system handling real money.
 - **Any other user's data.** If the tester can see something that looks like another person's data,
   **stop and report it** — do not open, copy or download it.
@@ -150,12 +154,17 @@ The Chromium build is `browser-extension/build/lados-chrome.zip` (rebuild with
 
 ## 5. Rules of engagement (given to both agents)
 
-1. **Only the assets in §3.** If a path leads outside it, stop.
+1. **Only the owner's own assets in §3.** If a path leads outside them, stop.
 2. **Do not destroy data.** The test account is disposable; everything else is not.
 3. **Report, do not exploit.** Finding a way in is the deliverable; using it against anyone is not.
 4. **Stop and report** if you find evidence of someone else's data, or if a technique could not be
    stopped once started (a flood, a mail loop, anything with a real cost).
-5. **No third-party systems.** No Cloudflare, no mail providers, no Paddle production, no DNS.
+5. **Never attack a provider or another customer — but *do* review the owner's configuration.** Do
+   not try to break into Cloudflare, Paddle, GitHub, Google, a mail provider or the **production**
+   Lados server, and never touch another tenant's data. You *may* test how the owner has configured
+   those services (the staging Worker and its DNS, the repo and its secrets, the Paddle sandbox, the
+   store listings) and prove a setting wrong. Read and verify; do not change anything, and do not
+   spend real money or notify third parties.
 6. **Be honest about what you could not test** (for example, if you could not run the desktop app).
 
 ## 6. Observability — watch the experiment
