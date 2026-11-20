@@ -4,7 +4,7 @@ Copy‑paste fields for the **Chrome Web Store** and **Microsoft Edge Add‑ons*
 Firefox (AMO) is already published; its fields are the same.
 
 - Package: `browser-extension/build/lados-chrome.zip` (rebuild with `python3 scripts/build-extension.py`)
-- Version: `0.4.2` (from `manifest.chrome.json`)
+- Version: `0.4.3` (from `manifest.chrome.json`)
 - Icon: `browser-extension/icons/icon-128.png`
 
 ---
@@ -48,6 +48,25 @@ Privacy policy: https://ladospwm.vercel.app/privacy
 
 (Chrome/Edge take the same wording: Chrome’s “What’s new in this version” gets the release note,
 and its privacy questionnaire is already covered above.)
+
+---
+
+## Firefox (AMO) 0.4.3 — release notes & notes to reviewer
+
+**Release notes** (shown to users):
+
+```
+Clearer messages when a fill does not happen: refused in Lados, never answered, or the extension
+is not paired yet are now told apart instead of all saying "Open Lados to fill".
+```
+
+**Notes to reviewer:**
+
+```
+Small text and state changes in content.js and background.js only. The background script keeps the
+server's reason from the bridge response, and the widget now shows "Not filled — not allowed in
+Lados", "Pair the extension in Lados" or "Open Lados to fill" as appropriate, instead of one
+message for every failure. No manifest, permission or network change.
 
 ---
 

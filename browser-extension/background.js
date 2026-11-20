@@ -47,6 +47,14 @@ async function bridgeGet(path, timeoutMs = TIMEOUT_MS) {
     if (!response.ok) {
       const error = new Error(`http-${response.status}`);
       error.status = response.status;
+      // Keep the server's own reason ("not paired", "unavailable"), so the widget can say what
+      // really happened instead of a blanket "open Lados" (the red-team report, N5/N6).
+      try {
+        const body = await response.json();
+        if (body && typeof body.error === "string") error.code = body.error;
+      } catch {
+        /* no JSON body */
+      }
       throw error;
     }
     return await response.json();
@@ -72,8 +80,10 @@ async function findEntries(url) {
     const data = await bridgeGet(`/v1/entries?url=${encodeURIComponent(url || "")}`);
     return { ok: true, entries: Array.isArray(data.entries) ? data.entries : [] };
   } catch (error) {
-    // 401 = the vault is locked; anything else means the app is not reachable.
-    const state = error && error.status === 401 ? "locked" : "offline";
+    // 401 = the vault is locked; 403 "not paired" = pair the extension; anything else = unreachable.
+    let state = "offline";
+    if (error && error.status === 401) state = "locked";
+    else if (error && error.status === 403 && error.code === "not paired") state = "unpaired";
     return { ok: false, state, entries: [] };
   }
 }
@@ -84,7 +94,11 @@ async function revealEntry(id) {
     const data = await bridgeGet(`/v1/reveal?id=${encodeURIComponent(id || "")}`, 32000);
     return { ok: true, username: data.username, password: data.password };
   } catch (error) {
-    const state = error && error.status === 401 ? "locked" : "offline";
+    // Tell the three failures apart: the vault locked, the extension not paired, or the request
+    // deliberately refused / left unanswered in Lados (the red-team report, N5/N6).
+    let state = "offline";
+    if (error && error.status === 401) state = "locked";
+    else if (error && error.status === 403) state = error.code === "not paired" ? "unpaired" : "denied";
     return { ok: false, state };
   }
 }

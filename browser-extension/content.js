@@ -22,7 +22,7 @@
   let panel = null;
   let matches = [];
   let fields = null;
-  let state = "idle"; // idle | loading | ready | locked | offline
+  let state = "idle"; // idle | loading | ready | locked | offline | unpaired | denied
   let debounce = null;
   let lastUrl = location.href;
   let positionRaf = 0;
@@ -181,7 +181,8 @@
 
     if (!secret || !secret.ok) {
       matches = [];
-      state = secret && secret.state === "locked" ? "locked" : "offline";
+      const known = ["locked", "unpaired", "denied"];
+      state = secret && known.includes(secret.state) ? secret.state : "offline";
       renderPill();
       return;
     }
@@ -267,6 +268,8 @@
   function pillContent() {
     if (state === "loading") return { cls: "", text: "Checking Lados…", chev: false };
     if (state === "locked") return { cls: "locked", text: "Lados is locked — unlock to fill", chev: false };
+    if (state === "denied") return { cls: "locked", text: "Not filled — not allowed in Lados", chev: false };
+    if (state === "unpaired") return { cls: "offline", text: "Pair the extension in Lados", chev: false };
     if (state === "offline") return { cls: "offline", text: "Open Lados to fill", chev: false };
     const n = matches.length;
     return { cls: "", text: n === 1 ? "Fill with Lados" : `${n} Lados logins`, chev: n > 1 };
@@ -374,7 +377,7 @@
       else hidePanel();
       return;
     }
-    if (state === "locked" || state === "offline") openApp();
+    if (state === "locked" || state === "offline" || state === "denied" || state === "unpaired") openApp();
   }
 
   // -------------------------------------------------------------------------
@@ -402,13 +405,9 @@
       matches = response.entries;
       state = "ready";
       renderPill();
-    } else if (response && response.state === "locked") {
+    } else if (response && (response.state === "locked" || response.state === "unpaired" || response.state === "offline")) {
       matches = [];
-      state = "locked";
-      renderPill();
-    } else if (response && response.state === "offline") {
-      matches = [];
-      state = "offline";
+      state = response.state;
       renderPill();
     } else {
       // No saved login for this page: stay out of the way.
