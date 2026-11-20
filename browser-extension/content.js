@@ -11,6 +11,8 @@
   const SHIELD_PATH =
     "M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3zm0 3.2 4.8 1.8v4c0 3.3-2 6.5-4.8 7.8-2.8-1.3-4.8-4.5-4.8-7.8v-4L12 5.2z";
   const SVG_NS = "http://www.w3.org/2000/svg";
+  // A field smaller than this is not one a user can use: it is hidden or a honeypot.
+  const MIN_FIELD_SIZE = 8;
 
   let host = null;
   let shadow = null;
@@ -51,22 +53,76 @@
   // Field detection
   // -------------------------------------------------------------------------
 
+  /** Alpha channel of a CSS colour: 0 for `transparent`/`rgba(...,0)`, 1 when opaque. */
+  function colorAlpha(color) {
+    if (!color) return 1;
+    const value = String(color).trim().toLowerCase();
+    if (value === "transparent") return 0;
+    const match = value.match(/rgba?\(([^)]+)\)/);
+    if (!match) return 1;
+    const parts = match[1].split(",").map((part) => part.trim());
+    return parts.length >= 4 ? Number(parts[3]) : 1;
+  }
+
   function isVisible(el) {
     if (!(el instanceof HTMLElement)) return false;
     if (el.disabled || el.readOnly) return false;
+
     const style = getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    // The field itself: not display:none, not visibility:hidden, not fully transparent text
+    // (the hp-color trap), and at least a real field's size.
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (Number(style.opacity) === 0) return false;
+    if (colorAlpha(style.color) === 0) return false;
+    if (style.webkitTextFillColor && colorAlpha(style.webkitTextFillColor) === 0) return false;
+    if (style.contentVisibility === "hidden") return false;
+
     const rect = el.getBoundingClientRect();
-    // A zero-sized field, or one a page moved off the viewport (the classic
-    // `position:absolute; left:-9999px` trap), is invisible to the user: never fill it. Filling a
-    // honeypot puts the password in a field the page — not the user — controls (the report, M16).
-    if (rect.width < 1 || rect.height < 1) return false;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    if (viewportWidth > 0 && viewportHeight > 0) {
-      if (rect.right <= 0 || rect.bottom <= 0) return false;
-      if (rect.left >= viewportWidth || rect.top >= viewportHeight) return false;
+    // Too small to be a field (the sr-only 1x1 pattern), or moved off to the top/left
+    // (the classic `position:absolute; left:-9999px` trap).
+    if (rect.width < MIN_FIELD_SIZE || rect.height < MIN_FIELD_SIZE) return false;
+    if (rect.right <= 0 || rect.bottom <= 0) return false;
+    // Moved beyond the document itself: unreachable, so hidden. A field merely below the fold is
+    // still reachable by scrolling, so it is *not* rejected here (the red-team report, N4).
+    const docWidth = document.documentElement.scrollWidth || 0;
+    const docHeight = document.documentElement.scrollHeight || 0;
+    if (docWidth > 0 && rect.left >= docWidth) return false;
+    if (docHeight > 0 && rect.top >= docHeight) return false;
+
+    // Clipped to nothing by `clip`/`clip-path` (sr-only is a 1x1 box plus a clip).
+    if (style.clip && style.clip !== "auto" && style.clip !== "none") {
+      const lengths = style.clip.match(/-?\d+(\.\d+)?px/g);
+      if (lengths && lengths.length === 4) {
+        const [top, right, bottom, left] = lengths.map(parseFloat);
+        if (right - left < MIN_FIELD_SIZE || bottom - top < MIN_FIELD_SIZE) return false;
+      }
     }
+    if (style.clipPath && style.clipPath !== "none") return false;
+
+    // Every ancestor must be shown too: a parent with `opacity:0` (hp-parent-opacity), a hidden
+    // one, or one that clips the field away with `overflow:hidden` and no height (hp-overflow).
+    for (let node = el.parentElement; node instanceof HTMLElement; node = node.parentElement) {
+      const parentStyle = getComputedStyle(node);
+      if (parentStyle.display === "none" || parentStyle.visibility === "hidden") return false;
+      if (Number(parentStyle.opacity) === 0) return false;
+      if (/hidden|clip/.test(parentStyle.overflow + parentStyle.overflowX + parentStyle.overflowY)) {
+        const box = node.getBoundingClientRect();
+        const outside =
+          rect.bottom <= box.top || rect.top >= box.bottom || rect.right <= box.left || rect.left >= box.right;
+        if (outside) return false;
+      }
+    }
+
+    // Something drawn on top of the field (hp-overlay): hit-test its centre. Only when the centre
+    // is inside the viewport; a below-the-fold field is hit-tested again when it is filled.
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    if (cx >= 0 && cy >= 0 && cx < window.innerWidth && cy < window.innerHeight) {
+      const top = document.elementFromPoint(cx, cy);
+      const ours = top === host || (host && host.contains(top));
+      if (top && top !== el && !el.contains(top) && !ours) return false;
+    }
+
     return true;
   }
 
@@ -112,7 +168,9 @@
   async function fill(index) {
     const entry = matches[index];
     if (!entry) return;
-    const current = findLoginFields() || fields;
+    // Re-detect now, so the fill targets a field that is visible *at this moment* (a page can move
+    // the field between the scan and the click), not the one captured when the pill was drawn.
+    const current = findLoginFields();
     if (!current) return;
 
     // Ask the app for the secret only now. If it is locked or closed, nothing
@@ -390,6 +448,9 @@
   observer.observe(document, { subtree: true, childList: true });
   window.addEventListener("scroll", onScrollOrResize, { passive: true });
   window.addEventListener("resize", onScrollOrResize, { passive: true });
+  // A field below the fold becomes usable only when the user scrolls to it (N4): re-scan when
+  // focus lands anywhere, which covers clicking such a field.
+  document.addEventListener("focusin", () => scheduleRefresh(), true);
 
   // Re-check whenever the tab regains focus, so a Lados that was locked or closed
   // since the last visit is reflected instead of showing stale candidates.
