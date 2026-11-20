@@ -505,14 +505,26 @@ fn upgrade_to_opaque(base: &str, token: &str, secret: &[u8]) -> Result<()> {
     crate::sync::opaque_upgrade_finish(base, token, &record)
 }
 
+/// Verifies the account password with an OPAQUE login and returns the **fresh session token** that
+/// login produced. A wrong password is told apart from a network or server failure, so the caller can
+/// say which happened — it used to report "not your password" for any failure (the report, M7).
+#[cfg(feature = "sync")]
+fn reauth_token(base: &str, email: &str, composite: &SecretKey) -> Result<String> {
+    let auth = crate::sync::auth_secret(composite, email)?;
+    match opaque_login(base, email, auth.as_bytes()) {
+        Ok(token) => Ok(token),
+        Err(Error::InvalidCredentials) => Err(Error::invalid(
+            "That is not your sync master password. If you no longer know it, cancel the subscription in Paddle, or write to ladospwm@proton.me and we will remove the account.",
+        )),
+        Err(other) => Err(other),
+    }
+}
+
 /// Whether `composite` is the account's master password, verified with an OPAQUE login. Nothing
 /// secret has to be remembered between sessions.
 #[cfg(feature = "sync")]
 fn is_the_account_password(base: &str, email: &str, composite: &SecretKey) -> bool {
-    let Ok(auth) = crate::sync::auth_secret(composite, email) else {
-        return false;
-    };
-    opaque_login(base, email, auth.as_bytes()).is_ok()
+    reauth_token(base, email, composite).is_ok()
 }
 
 /// Sends one step of a coordinated master-password change to the interface.

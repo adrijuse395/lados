@@ -32,6 +32,10 @@ const enc = new TextEncoder();
 /// hundred KB, so this is very generous while still bounding abuse.
 const ACCOUNT_QUOTA_BYTES = 100 * 1024 * 1024;
 
+/// How recently the caller must have signed in for an irreversible account deletion. The app
+/// re-authenticates with a fresh OPAQUE login right before deleting (the red-team report, M7).
+const REAUTH_WINDOW_MS = 5 * 60 * 1000;
+
 function bearerToken(request: Request): string | null {
   const match = (request.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i);
   return match ? match[1] : null;
@@ -72,6 +76,8 @@ interface AccountRow {
   plan_valid_until: number | null;
   billing_subscription_id: string | null;
   password_changed_at: number | null;
+  /** When the session that authenticated this call expires; used to tell a fresh sign-in (M7). */
+  session_expires_at: number | null;
 }
 
 /// Creates a fresh session token for an account and returns it.
@@ -93,7 +99,7 @@ async function authenticate(env: Env, request: Request): Promise<AccountRow | nu
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.plan_valid_until AS plan_valid_until, a.billing_subscription_id AS billing_subscription_id, a.password_changed_at AS password_changed_at
+    `SELECT a.id AS id, a.email AS email, a.plan AS plan, a.plan_valid_until AS plan_valid_until, a.billing_subscription_id AS billing_subscription_id, a.password_changed_at AS password_changed_at, s.expires_at AS session_expires_at
        FROM sessions s JOIN accounts a ON a.id = s.account_id
       WHERE s.token_hash = ? AND s.expires_at > ?`,
   )
@@ -688,6 +694,15 @@ async function cancelSubscriptionForDeletion(env: Env, account: AccountRow): Pro
 }
 
 async function deleteAccount(env: Env, account: AccountRow): Promise<Response> {
+  // Deleting is irreversible, so require a session created by a *recent* sign-in: the app
+  // re-authenticates (a fresh OPAQUE login) just before deleting. A stolen 30-day token alone no
+  // longer suffices (the red-team report, M7). A session's creation time is `expires_at` minus the
+  // fixed TTL, so no extra column is needed.
+  const ttlMs = Number(env.TOKEN_TTL_SECONDS || "2592000") * 1000;
+  const created = (account.session_expires_at ?? 0) - ttlMs;
+  if (!account.session_expires_at || Date.now() - created > REAUTH_WINDOW_MS) {
+    return json({ error: "reauth_required" }, 403);
+  }
   // Stop billing first: never leave a live subscription attached to an account we are erasing.
   const failure = await cancelSubscriptionForDeletion(env, account);
   if (failure) return failure;

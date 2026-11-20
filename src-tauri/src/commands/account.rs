@@ -237,11 +237,12 @@ pub async fn sync_delete_account(app: AppHandle, password: String, key_file: Opt
 
             let password = Zeroizing::new(password);
             let composite = composite_key(&password, key_file.as_deref())?;
-            if !is_the_account_password(&account.server_url, &account.email, &composite) {
-                return Err(Error::invalid("That is not your sync master password"));
-            }
+            // Verify the password with a fresh login and use **that** session for the delete. The
+            // server only accepts a recently created session for this irreversible action, so a
+            // stolen long-lived token is not enough on its own (the red-team report, M7).
+            let fresh = reauth_token(&account.server_url, &account.email, &composite)?;
 
-            crate::sync::delete_account(&account.server_url, &account.token)?;
+            crate::sync::delete_account(&account.server_url, &fresh)?;
             state.update_settings(|settings| {
                 settings.sync_account = None;
                 settings.synced_vaults.clear();
