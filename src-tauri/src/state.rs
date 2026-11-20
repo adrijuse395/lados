@@ -363,7 +363,12 @@ impl AppState {
                 SyncView {
                     logged_in: account.is_some(),
                     email: account.map(|account| account.email.clone()),
-                    server_url: account.map(|account| account.server_url.clone()),
+                    // The account's server when signed in; otherwise the server this build was made
+                    // for, so the user can see where credentials would go *before* signing in (the
+                    // red-team report, I5).
+                    server_url: account
+                        .map(|account| account.server_url.clone())
+                        .or_else(|| sync_server().map(str::to_string)),
                     this_vault_synced: synced.is_some(),
                     last_synced_at: synced.and_then(|synced| synced.last_synced_at),
                     password_changed_at: account.and_then(|account| account.password_changed_at),

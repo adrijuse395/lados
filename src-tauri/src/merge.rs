@@ -40,6 +40,9 @@ pub struct MergeReport {
     pub folders_added: usize,
     pub folders_updated: usize,
     pub folders_deleted: usize,
+    /// Folders renamed differently on two devices: the names that were dropped, as
+    /// `"the one kept ← the one dropped"` (the red-team report, M4).
+    pub folder_conflicts: Vec<String>,
 }
 
 pub struct MergeOutcome {
@@ -235,10 +238,15 @@ fn merge_folders(
         let mine = local_by_id.get(&id).copied();
         let merged = match (mine, remote_by_id.get(&id).copied()) {
             (Some(l), Some(r)) => {
-                // Both devices have this folder and their names differ, so one name is about to be
-                // dropped. Report it instead of letting it disappear (the red-team report, M4).
-                if l.name != r.name {
+                // Both devices have this folder and their names differ. Folders keep no history, so
+                // a three-way merge is impossible; but a copy that has never been touched since it
+                // was created (`modified_at == created_at`) was not renamed, so a difference against
+                // it is a one-sided change, not a conflict. Only when **both** copies were modified
+                // is it a real, divergent rename (the red-team report, M4).
+                if l.name != r.name && l.modified_at > l.created_at && r.modified_at > r.created_at {
                     report.conflicts_resolved += 1;
+                    let (winner, loser) = newest(l, l.modified_at, r, r.modified_at, || l.name.cmp(&r.name));
+                    report.folder_conflicts.push(format!("{} ← {}", winner.name, loser.name));
                 }
                 merge_folder(l, r)
             }
@@ -542,6 +550,41 @@ mod tests {
     fn shift_entry(vault: &mut Vault, id: Uuid, seconds: i64) {
         let entry = vault.entries.iter_mut().find(|e| e.id == id).unwrap();
         entry.modified_at += TimeDelta::seconds(seconds);
+    }
+
+    fn shift_folder(vault: &mut Vault, id: Uuid, seconds: i64) {
+        let folder = vault.folders.iter_mut().find(|f| f.id == id).unwrap();
+        folder.modified_at += TimeDelta::seconds(seconds);
+    }
+
+    #[test]
+    fn a_one_sided_folder_rename_is_not_a_conflict() {
+        let (vault, work, ..) = base();
+        let remote = vault.clone();
+        let mut local = vault;
+        // One device renames the folder; the other copy was never touched since it was created.
+        local.update_folder(work, "Work-A", None).unwrap();
+
+        let outcome = merge(&local, &remote);
+        assert_eq!(outcome.report.conflicts_resolved, 0);
+        assert!(outcome.report.folder_conflicts.is_empty());
+        assert_eq!(outcome.vault.folder(work).unwrap().name, "Work-A");
+    }
+
+    #[test]
+    fn a_divergent_folder_rename_names_the_dropped_name() {
+        let (vault, work, ..) = base();
+        let mut local = vault.clone();
+        let mut remote = vault;
+        local.update_folder(work, "W-A2", None).unwrap();
+        remote.update_folder(work, "W-B2", None).unwrap();
+        shift_folder(&mut local, work, 60); // local renamed last, so it wins
+
+        let outcome = merge(&local, &remote);
+        assert_eq!(outcome.report.conflicts_resolved, 1);
+        assert_eq!(outcome.vault.folder(work).unwrap().name, "W-A2");
+        // The name that was dropped is reported, not lost silently.
+        assert_eq!(outcome.report.folder_conflicts, vec!["W-A2 ← W-B2".to_string()]);
     }
 
     #[test]

@@ -37,7 +37,16 @@ export function showImportSummary(summary: ImportSummary): void {
 }
 
 export function hasChanges(report: MergeReport): boolean {
-  return Object.values(report).some((value) => value > 0);
+  const counts =
+    report.entriesAdded +
+    report.entriesUpdated +
+    report.entriesDeleted +
+    report.conflictsResolved +
+    report.duplicatesSkipped +
+    report.foldersAdded +
+    report.foldersUpdated +
+    report.foldersDeleted;
+  return counts > 0 || report.folderConflicts.length > 0;
 }
 
 /** One line for notifications, such as "3 entries added, 1 updated". */
@@ -50,6 +59,8 @@ export function describeChanges(report: MergeReport): string {
     // Conflicts used to be left out, so a password changed on two devices was replaced without a
     // word (the red-team report, M3).
     report.conflictsResolved > 0 && `${plural(report.conflictsResolved, "conflict", "conflicts")} resolved`,
+    // Name the folder names that were dropped, not just the count (the red-team report, M4).
+    report.folderConflicts.length > 0 && `folder rename ${report.folderConflicts.join("; ")}`,
   ].filter((part): part is string => typeof part === "string");
   return parts.length > 0 ? parts.join(", ") : "no visible changes";
 }
@@ -79,6 +90,12 @@ export function showMergeReport(report: MergeReport): void {
         ? h("p", {
             class: "muted",
             text: "Entries edited in both vaults were combined field by field. Where both changed the same field, the most recent value was kept. The versions they replaced are in each entry's history.",
+          })
+        : null,
+      report.folderConflicts.length > 0
+        ? h("p", {
+            class: "muted",
+            text: `A folder was renamed on both devices; the name kept is first, the name dropped second: ${report.folderConflicts.join("; ")}.`,
           })
         : null,
       h("p", { class: "muted", text: "The other vault file was not modified." }),
