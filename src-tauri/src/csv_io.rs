@@ -162,11 +162,12 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
         ));
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    // `flexible(false)`: a row whose columns do not match the header is reported, not swallowed.
-    // With `flexible(true)` an unclosed quote absorbed the rest of the file into one entry.
+    // `flexible(true)`: a row with a different number of columns (a stray comma) does not reject the
+    // whole file; the loop below skips and counts those rows instead (the red-team report, M13). An
+    // unclosed quote is still caught there, because it makes a field span lines.
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(detect_delimiter(bytes))
-        .flexible(false)
+        .flexible(true)
         .from_reader(bytes);
 
     // The first column of each kind wins; repeated ones are kept as custom fields.
@@ -197,8 +198,23 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
 
     let mut rows = Vec::new();
     let mut skipped = 0;
-    for record in reader.byte_records() {
-        let record = record.map_err(import_error)?;
+    for result in reader.byte_records() {
+        let record = result.map_err(import_error)?;
+        if record.len() != columns.len() {
+            // A row whose field count differs from the header. A field that spans lines means a quote
+            // was never closed, which swallows the rest of the file: say so, with the line, instead
+            // of importing the corruption (the red-team report, M13).
+            if record.iter().any(|field| field.contains(&b'\n')) {
+                let line = record.position().map(|position| position.line()).unwrap_or(0);
+                return Err(Error::Import(format!(
+                    "The file looks malformed around line {line}: a quote may never be closed. Open it \
+                     in a spreadsheet, fix or remove that row, and import it again."
+                )));
+            }
+            // A plain ragged row (a stray comma, a missing value): skip it and count it.
+            skipped += 1;
+            continue;
+        }
         let mut content = EntryContent::default();
         let mut path = Vec::new();
         for (column, raw) in columns.iter().zip(record.iter()) {
@@ -507,10 +523,23 @@ mod tests {
 
     /// An unclosed quote used to absorb the rest of the file into one garbage entry.
     #[test]
-    fn an_unclosed_quote_is_reported_instead_of_swallowed() {        let malformed = b"Title,Username,Password\n\"unclosed,quote,pw\nmore,rows,here\n";
+    fn an_unclosed_quote_is_reported_instead_of_swallowed() {
+        let malformed = b"Title,Username,Password\n\"unclosed,quote,pw\nmore,rows,here\n";
         let result = parse(malformed);
         assert!(result.is_err(), "a malformed file must be reported, not imported");
         assert!(matches!(result, Err(Error::Import(_))));
+    }
+
+    /// A row with a stray (or missing) comma used to reject the whole file; now it is skipped and
+    /// counted, and the good rows import (the red-team report, M13).
+    #[test]
+    fn a_ragged_row_is_skipped_instead_of_rejecting_the_file() {
+        let bytes = b"Title,Username,Password\nGood,user,pw\nRagged,only-two-fields\nAlso good,user2,pw2\n";
+        let (rows, skipped) = parse(bytes).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(skipped, 1);
+        let titles: Vec<&str> = rows.iter().map(|row| row.content.title.as_str()).collect();
+        assert_eq!(titles, vec!["Good", "Also good"]);
     }
 
     /// A cell a spreadsheet would run as a formula is neutralised on export, and restored on

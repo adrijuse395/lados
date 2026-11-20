@@ -429,7 +429,7 @@ export const exportCsv = () =>
         h("p", { text: "Use it only to move your passwords to another program, and delete the file afterwards." }),
         h("p", {
           class: "muted",
-          text: "Text a spreadsheet would run as a formula is prefixed with an apostrophe, so the file is safe to open. Passwords are written exactly as they are.",
+          text: "Visible fields a spreadsheet would run as a formula are prefixed with an apostrophe, so the file is safe to open. Passwords are written exactly as they are — a password that begins with =, +, - or @ could run if the file is opened in a spreadsheet, so open it in a text editor or an importer instead.",
         }),
       ),
       confirmLabel: "Export anyway",

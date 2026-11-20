@@ -16,7 +16,9 @@ export function showImportSummary(summary: ImportSummary): void {
   if (summary.duplicatesSkipped > 0) {
     notes.push(`${plural(summary.duplicatesSkipped, "entry was", "entries were")} already in the vault and skipped.`);
   }
-  if (summary.rowsSkipped > 0) notes.push(`${plural(summary.rowsSkipped, "empty row was", "empty rows were")} ignored.`);
+  if (summary.rowsSkipped > 0) {
+    notes.push(`${plural(summary.rowsSkipped, "row was", "rows were")} ignored (empty, or with the wrong number of columns).`);
+  }
   if (summary.attachmentsSkipped > 0) {
     notes.push(`${plural(summary.attachmentsSkipped, "attachment was", "attachments were")} not imported: Lados does not store files.`);
   }

@@ -30,6 +30,14 @@ export function renderUnlock(container: HTMLElement): void {
     card.classList.add("shake");
   };
 
+  // A stale "wrong password" left under the field while it is retyped looks like a failure that has
+  // already happened; clear it as soon as anything changes (the red-team report, L12).
+  const clearError = () => {
+    error.hidden = true;
+  };
+  password.input.addEventListener("input", clearError);
+  keyFile.element.addEventListener("click", clearError);
+
   const unlock = async () => {
     if (!password.value()) {
       showError("Enter the master password");

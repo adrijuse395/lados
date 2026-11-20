@@ -160,7 +160,7 @@ export async function openSettings(): Promise<void> {
           hint:
             store.status?.os === "windows"
               ? "Copied passwords are also kept out of the Windows clipboard history."
-              : undefined,
+              : "Some clipboard managers keep their own history; Lados cannot clear those copies.",
         }),
       ),
       h("section", { class: "settings-section" }, h("h3", { text: "Window" }), tray, mobile ? null : startup),
@@ -188,29 +188,35 @@ export async function openSettings(): Promise<void> {
             "section",
             { class: "settings-section" },
             h("h3", { text: "Browser fill (desktop)" }),
-            browsers?.firefox
-              ? h(
-                  "p",
-                  { class: "muted" },
-                  "Firefox is installed. The Lados extension fills login forms from this vault while Lados is running and the vault is unlocked. ",
-                  h(
-                    "button",
-                    { type: "button", class: "link-button", onClick: () => void openExtensionStore("firefox") },
-                    "Add the extension from addons.mozilla.org",
-                  ),
-                  ".",
-                )
-              : h(
-                  "p",
-                  { class: "muted" },
-                  "The Lados extension fills login forms from this vault while Lados is running. You’ll need Firefox first — ",
-                  h(
-                    "button",
-                    { type: "button", class: "link-button", onClick: () => void openBrowserDownload("firefox") },
-                    "download Firefox",
-                  ),
-                  ", then open this again to add the extension in one click.",
-                ),
+            h("p", {
+              class: "muted",
+              text: "The Lados extension fills login forms from this vault while Lados is running and the vault is unlocked. The same extension runs in Firefox, Chrome and Edge.",
+            }),
+            h(
+              "p",
+              { class: "muted" },
+              browsers?.firefox
+                ? [
+                    h(
+                      "button",
+                      { type: "button", class: "link-button", onClick: () => void openExtensionStore("firefox") },
+                      "Add it in Firefox (addons.mozilla.org)",
+                    ),
+                    ".",
+                  ]
+                : [
+                    h(
+                      "button",
+                      { type: "button", class: "link-button", onClick: () => void openBrowserDownload("firefox") },
+                      "Get Firefox",
+                    ),
+                    " to add it there.",
+                  ],
+            ),
+            h("p", {
+              class: "muted",
+              text: "The Chrome and Edge builds are in their stores' review; Lados will link them here once they are published.",
+            }),
             h(
               "button",
               { type: "button", class: "button", onClick: () => void extensionInstallDialog() },
