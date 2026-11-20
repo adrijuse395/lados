@@ -183,6 +183,8 @@ pub fn run() {
             commands::recovery::check_recovery_key,
             commands::recovery::recovery_key_targets,
             commands::recovery::recovery_file_targets,
+            commands::recovery::existing_backups,
+            commands::recovery::delete_vault_backup,
             commands::autofill::autofill_pairing_token,
             commands::autofill::autofill_answer,
             commands::vault::get_vault_view,

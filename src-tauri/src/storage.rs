@@ -500,10 +500,18 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
     }
 }
 
+/// Where the single pre-session backup of `path` lives (`vault.lados` → `vault.lados.bak`).
+pub fn backup_path(path: &Path) -> PathBuf {
+    sibling(path, ".bak")
+}
+
 /// Keeps a copy of the file as it was before this session changed it. An existing backup is left
 /// alone: a later re-encryption (a recovery, say) must not overwrite the user's oldest copy.
+///
+/// That copy keeps the password the vault had when it was made, so the app tells the user about it
+/// after a password change or a recovery and lets them delete it (the red-team report, H2).
 pub fn backup(path: &Path) -> Result<()> {
-    let backup = sibling(path, ".bak");
+    let backup = backup_path(path);
     if path.exists() && !backup.exists() {
         fs::copy(path, &backup)?;
     }

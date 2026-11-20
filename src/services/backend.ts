@@ -91,6 +91,10 @@ export const backend = {
   /** The vaults the chosen recovery key file can open on this device. */
   recoveryFileTargets: (recoveryFile: string) =>
     call<RecoveryTargetsView>("recovery_file_targets", { recoveryFile }),
+  /** `.bak` copies kept beside your vaults; they open with a previous password (report H2). */
+  existingBackups: () => call<string[]>("existing_backups"),
+  /** Deletes one such copy, after the user was told what it is. */
+  deleteVaultBackup: (path: string) => call<void>("delete_vault_backup", { path }),
 
   // Browser autofill bridge
   /** The pairing code the extension must be given. Pass `reset` to replace it. */

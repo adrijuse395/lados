@@ -8,7 +8,7 @@ import { folderSelect, openEntryEditor } from "./dialogs/entry-editor";
 import { openFolderEditor } from "./dialogs/folder-editor";
 import { openGenerator } from "./dialogs/generator";
 import { openHistory } from "./dialogs/history";
-import { checkRecoveryKeyDialog, createRecoveryKeyDialog } from "./dialogs/recovery";
+import { checkRecoveryKeyDialog, createRecoveryKeyDialog, warnAboutBackups } from "./dialogs/recovery";
 import { captureUnsavedEditor } from "./dialogs/entry-editor";
 import { showImportSummary, showMergeReport } from "./dialogs/reports";
 import { openSettings } from "./dialogs/settings";
@@ -125,6 +125,7 @@ export const changeMasterKey = () =>
     if (!status) return;
     await showStatus(status);
     toast("The master key was changed", "success");
+    await warnAboutBackups([]);
   });
 
 /** Gives this vault a recovery key: a code, kept in a file, that opens it without the password. */

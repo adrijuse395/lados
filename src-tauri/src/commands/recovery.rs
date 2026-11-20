@@ -26,6 +26,9 @@ pub struct RecoveryKeyView {
     /// Synced vaults that are present here but do **not** use this master password, so the key
     /// does not cover them and the user must know before relying on it.
     pub uncovered: Vec<String>,
+    /// `.bak` copies kept beside the vaults, which open with a **previous** password. Named so the
+    /// user can delete them (the red-team report, H2).
+    pub backups: Vec<String>,
 }
 
 /// What using a recovery key restored.
@@ -105,8 +108,9 @@ fn create_for_account(
         ));
     }
 
-    // Every vault file on this device whose key this password derives. Anything this password does
-    // not open is left alone, keeping its own recovery key.
+    // Every vault file on this device whose key this password really opens. Anything this password
+    // does not open is left alone, keeping its own recovery key. The check decrypts, so a vault with
+    // a *different* password (a common case on an unwrapped v1 file) is correctly left out (N3).
     let mut covered: Vec<(PathBuf, VaultKey)> = Vec::new();
     for path in candidate_vaults(state) {
         if let Ok(key) = vault_key_for(&path, &composite) {
@@ -120,34 +124,67 @@ fn create_for_account(
     let uncovered = uncovered_synced(state, &covered_paths);
 
     let (text, code) = recovery::generate()?;
-    let names: Vec<String> = covered.iter().map(|(path, _)| views::file_name(path)).collect();
     let account = state.settings().sync_account.as_ref().map(|account| account.email.clone());
 
-    // Write the file *first*: a code with no vault is harmless, a wrap whose code the user never
-    // received is not. The file names no vaults (I4); the list is shown in the app instead.
-    storage::write_atomic(file, recovery::file_contents(names.len(), account.as_deref(), &text).as_bytes())?;
+    // Write the file *first*, with the number of vaults this password really opens: a code with no
+    // vault is harmless, a wrap whose code the user never received is not. The file names no vaults
+    // (I4); the list is shown in the app instead.
+    storage::write_atomic(file, recovery::file_contents(covered.len(), account.as_deref(), &text).as_bytes())?;
 
     // Add the wrap to each covered vault and save it. The open one goes through the session so it
-    // stays valid; the others are opened just for this.
+    // stays valid; the others are opened just for this. A vault that cannot be written is skipped
+    // and named, instead of aborting the whole run and leaving the file's count wrong (N3).
+    let mut wrapped: Vec<(PathBuf, VaultKey)> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for (path, key) in &covered {
-        let wrapped = key.with_recovery(&composite, &code)?;
-        if same_file(path, &open_path) {
-            state.with_vault_mut(|open| open.change_key(composite.clone(), wrapped.clone()))?;
+        let name = views::file_name(path);
+        let wrapped_key = match key.with_recovery(&composite, &code) {
+            Ok(key) => key,
+            Err(_) => {
+                failed.push(name);
+                continue;
+            }
+        };
+        let result = if same_file(path, &open_path) {
+            state.with_vault_mut(|open| open.change_key(composite.clone(), wrapped_key.clone()).map(|_| ()))
         } else {
-            let mut open = OpenVault::open(path.clone(), composite.clone())?;
-            open.change_key(composite.clone(), wrapped)?;
+            OpenVault::open(path.clone(), composite.clone())
+                .and_then(|mut open| open.change_key(composite.clone(), wrapped_key).map(|_| ()))
+        };
+        match result {
+            Ok(()) => wrapped.push((path.clone(), key.clone())),
+            Err(_) => failed.push(name),
         }
+    }
+    if wrapped.is_empty() {
+        return Err(Error::invalid(
+            "Nothing could be re-encrypted, so no recovery key was written. The vault files were left as they were.",
+        ));
+    }
+    // Rewrite the count when a vault was skipped, so the file says what it really opens.
+    if !failed.is_empty() {
+        storage::write_atomic(file, recovery::file_contents(wrapped.len(), account.as_deref(), &text).as_bytes())?;
     }
 
     // Send the wrap to the cloud so the copies on the other devices receive it as well.
     #[cfg(feature = "sync")]
-    push_wraps(state, &covered, &composite, &code);
+    push_wraps(state, &wrapped, &composite, &code);
+
+    // The `.bak` kept beside each vault is a copy from before an earlier change: it opens with the
+    // password the vault had then. Name those copies so the user can delete them (the report, H2).
+    let backups: Vec<String> = covered
+        .iter()
+        .map(|(path, _)| storage::backup_path(path))
+        .filter(|backup| backup.exists())
+        .map(|backup| views::path_text(&backup))
+        .collect();
 
     Ok(RecoveryKeyView {
         path: views::path_text(file),
-        vaults: names,
+        vaults: wrapped.iter().map(|(path, _)| views::file_name(path)).collect(),
         account,
         uncovered,
+        backups,
     })
 }
 
@@ -299,7 +336,7 @@ pub async fn recovery_key_targets(app: AppHandle) -> Result<RecoveryTargetsView>
         let mut vaults = Vec::new();
         for path in candidate_vaults(&state) {
             if vault_key_for(&path, &composite).is_ok() {
-                vaults.push(views::file_name(&path));
+                vaults.push(views::path_text(&path));
             }
         }
         Ok(RecoveryTargetsView { vaults })
@@ -321,12 +358,46 @@ pub async fn recovery_file_targets(app: AppHandle, recovery_file: String) -> Res
                 continue;
             };
             if matches!(wrap_state(&bytes, &code), WrapState::Opens) {
-                vaults.push(views::file_name(&path));
+                vaults.push(views::path_text(&path));
             }
         }
         Ok(RecoveryTargetsView { vaults })
     })
     .await
+}
+
+// ----- Backups left beside the vaults -----
+
+/// Every `.bak` kept beside a vault on this device. Each is a copy from before an earlier change and
+/// opens with the password the vault had then, so it is named after a password change or a recovery
+/// and can be deleted (the red-team report, H2).
+#[tauri::command(async)]
+pub fn existing_backups(state: State<'_, AppState>) -> Result<Vec<String>> {
+    Ok(candidate_vaults(&state)
+        .into_iter()
+        .map(|path| storage::backup_path(&path))
+        .filter(|backup| backup.exists())
+        .map(|backup| views::path_text(&backup))
+        .collect())
+}
+
+/// Deletes one such copy, after the user was told what it is. Only `*.lados.bak` is accepted.
+#[tauri::command(async)]
+pub fn delete_vault_backup(path: String) -> Result<()> {
+    let path = PathBuf::from(path);
+    let wanted = format!(".{}.bak", storage::FILE_EXTENSION);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !name.ends_with(wanted.as_str()) {
+        return Err(Error::invalid("That is not a vault backup"));
+    }
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(())
 }
 
 // ----- Checking a recovery key -----
@@ -583,10 +654,18 @@ fn candidate_vaults(state: &AppState) -> Vec<PathBuf> {
 }
 
 /// The key that `composite` derives for the vault at `path`, or an error when it does not open it.
+///
+/// An **unwrapped** (version-1) file has nothing to authenticate the password until it is decrypted,
+/// so `for_header` returns a key for *any* password. That made vaults with a different password look
+/// "covered" by a recovery key (the red-team report, N3), so the vault is decrypted here to be sure.
 fn vault_key_for(path: &Path, composite: &SecretKey) -> Result<VaultKey> {
     let bytes = storage::read_file(path)?;
     let header = storage::Header::parse(&bytes)?;
-    VaultKey::for_header(composite, &header, &bytes)
+    let key = VaultKey::for_header(composite, &header, &bytes)?;
+    // Decrypting is the real test. The plaintext is dropped (and zeroed) at once, since only the
+    // answer — "this password opens it" — is needed here.
+    let _opened = Zeroizing::new(storage::decrypt_vault(&bytes, &key)?);
+    Ok(key)
 }
 
 /// Synced vaults present here that are not among `covered`: they do not use this master password,

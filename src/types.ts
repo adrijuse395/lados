@@ -178,6 +178,8 @@ export interface RecoveryKeyView {
   account: string | null;
   /** Synced vaults that do not use this master password, so the key does not cover them. */
   uncovered: string[];
+  /** `.bak` copies kept beside the vaults, which open with a previous password (report H2). */
+  backups: string[];
 }
 
 /** What using a recovery key restored. */

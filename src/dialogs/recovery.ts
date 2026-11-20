@@ -38,6 +38,35 @@ function targetsList(verb: string, vaults: string[]): Child | null {
   );
 }
 
+/**
+ * Tells the user about the `.bak` kept beside each vault. It is a copy from before an earlier change
+ * and still opens with the password the vault had then, so it is a copy they may want to remove
+ * (the red-team report, H2). Offers to delete the ones named.
+ */
+export async function warnAboutBackups(backups: string[]): Promise<void> {
+  const paths = backups.length > 0 ? backups : await backend.existingBackups().catch(() => []);
+  if (paths.length === 0) return;
+  const remove = await confirmDialog({
+    title: "Backups that open with an older password",
+    message: h(
+      "div",
+      { class: "stack" },
+      h("p", {
+        text:
+          "Lados keeps one copy of a vault from before a change. These still open with the password the vault had then, so anyone who finds them can use it.",
+      }),
+      ...paths.map((path) => h("p", { class: "path-box", text: path })),
+    ),
+    confirmLabel: "Delete them",
+    danger: true,
+  });
+  if (!remove) return;
+  for (const path of paths) {
+    await backend.deleteVaultBackup(path).catch(() => undefined);
+  }
+  toast("Backups deleted", "success");
+}
+
 /** Creates one recovery key covering every vault the master password opens, saving the file. */
 export async function createRecoveryKeyDialog(): Promise<void> {
   const synced = store.status?.sync.loggedIn ?? false;
@@ -107,6 +136,7 @@ export async function createRecoveryKeyDialog(): Promise<void> {
         12000,
       );
     }
+    await warnAboutBackups(created.backups);
   } catch (error) {
     toastError(error);
   }
