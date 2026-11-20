@@ -71,10 +71,11 @@ fn sync(
             commands::remember_copy(state, &previous_path, &copy);
             let _ = app.emit("vault-diverged", path_text(&copy));
         }
-        // Reported once per file: the poll runs every two seconds and must not nag.
+        // Reported once per file: the poll runs every two seconds and must not nag. This only means
+        // the file is *gone*; no save has happened. The interface asks what to do (the report, M8).
         Ok(SyncOutcome::Missing) => {
             if last_missing.as_deref() != Some(previous_path.as_path()) {
-                let _ = app.emit("vault-missing", path_text(&previous_path));
+                let _ = app.emit("vault-file-missing", path_text(&previous_path));
                 *last_missing = Some(previous_path);
             }
         }

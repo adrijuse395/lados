@@ -148,6 +148,7 @@ pub fn run() {
             commands::forget_recent_vault,
             commands::remove_listed_vault,
             commands::touch,
+            commands::save_vault_again,
             commands::quit_app,
             commands::sync::sync_status,
             commands::sync::sync_sign_in,

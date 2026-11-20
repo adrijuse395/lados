@@ -66,6 +66,8 @@ export const backend = {
   forgetRecentVault: (path: string) => call<AppStatus>("forget_recent_vault", { path }),
   removeListedVault: (path: string) => call<AppStatus>("remove_listed_vault", { path }),
   touch: () => call<void>("touch"),
+  /** Writes the open vault again at its own path, recreating the file if it was removed (M8). */
+  saveVaultAgain: () => call<void>("save_vault_again"),
   quit: () => call<void>("quit_app"),
 
   // Vault session

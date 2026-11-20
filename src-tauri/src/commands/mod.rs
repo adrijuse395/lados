@@ -68,6 +68,9 @@ pub enum LockReason {
 /// Wipes the decrypted vault from memory and removes any copied secret from the clipboard.
 pub fn lock_now(app: &AppHandle, reason: LockReason) -> bool {
     let state = app.state::<AppState>();
+    // Never throw away a vault whose file has gone: write it back first, or locking would lose the
+    // only copy (the red-team report, M8).
+    save_current_if_missing(app, &state);
     let locked = state.session().lock();
     if locked {
         // A locked vault must not leave an "allow this fill?" prompt answerable, nor an undo
@@ -112,9 +115,10 @@ fn report_save(app: &AppHandle, state: &AppState, previous_path: &Path, outcome:
         let _ = app.emit("vault-diverged", views::path_text(copy));
     }
     if outcome.missing {
-        // The file had been deleted or moved; the change was written again at the same path, and
-        // the user is told rather than left to discover it.
-        let _ = app.emit("vault-missing", views::path_text(previous_path));
+        // The file had been deleted or moved; **this save wrote it again** at the same path. A
+        // distinct event from the poll's "the file is gone" (the red-team report, M8), because this
+        // one is true: a save really happened.
+        let _ = app.emit("vault-recreated", views::path_text(previous_path));
     }
 }
 
@@ -128,6 +132,22 @@ fn modify<T>(app: &AppHandle, state: &AppState, change: impl FnOnce(&mut Vault) 
     })?;
     report_save(app, state, &previous_path, &outcome);
     Ok(value)
+}
+
+/// Writes the open vault back to disk when its file is no longer there. Called before a lock, so a
+/// vault stripped from disk by another program is not also lost from memory (the report, M8).
+pub fn save_current_if_missing(app: &AppHandle, state: &AppState) {
+    let missing = state.with_vault(|open| Ok(!open.path().is_file())).unwrap_or(false);
+    if missing {
+        let _ = modify(app, state, |_| Ok(()));
+    }
+}
+
+/// Writes the open vault back to its file, recreating it when it had been removed. The user asks for
+/// this from the "the vault file is gone" prompt, so nothing is lost (the red-team report, M8).
+#[tauri::command(async)]
+pub fn save_vault_again(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    modify(&app, &state, |_| Ok(()))
 }
 
 /// Replaces the current session; an unlocked vault is wiped from memory when dropped.

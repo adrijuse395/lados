@@ -11,7 +11,7 @@ import { backend } from "./services/backend";
 import { listenToBackend } from "./services/events";
 import { store } from "./state/store";
 import { h, isTyping } from "./ui/dom";
-import { alertDialog } from "./ui/modal";
+import { alertDialog, confirmDialog } from "./ui/modal";
 import { errorMessage, toast, toastError } from "./ui/toast";
 import { maybeOfferAppUpdate } from "./services/updater";
 import { trackActivity } from "./utils/activity";
@@ -67,18 +67,34 @@ async function start(): Promise<void> {
     syncError(message) {
       toast(`The vault could not be synchronized: ${message}`, "error", 6000);
     },
-    vaultMissing(path) {
+    vaultFileMissing(path) {
+      // The file is gone and **nothing has been saved** (report M8). Offer to write it back, and do
+      // not pretend a save already happened.
+      void confirmDialog({
+        title: "The vault file is gone",
+        message: h(
+          "div",
+          { class: "stack" },
+          h("p", {
+            text: "Lados cannot find the vault file. Your data is still open in memory and has not been written anywhere since.",
+          }),
+          h("p", { class: "path-box", text: path }),
+        ),
+        confirmLabel: "Save it again here",
+        danger: true,
+      }).then((again) => {
+        if (again) void backend.saveVaultAgain().catch(toastError);
+      });
+    },
+    vaultRecreated(path) {
       void alertDialog(
-        "The vault file was deleted or moved",
+        "Your vault was saved again",
         h(
           "div",
           { class: "stack" },
-          h("p", { text: "Lados found the vault file gone, and saved your changes again at:" }),
+          h("p", { text: "The vault file had been deleted or moved, and Lados wrote your vault again at:" }),
           h("p", { class: "path-box", text: path }),
-          h("p", {
-            class: "muted",
-            text: "If you meant to remove this vault, close it and delete that file.",
-          }),
+          h("p", { class: "muted", text: "If you meant to remove this vault, close it and delete that file." }),
         ),
       );
     },
