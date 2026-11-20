@@ -17,13 +17,13 @@
 
 | Platform | Asset |
 | --- | --- |
-| **Linux** | `Lados_0.2.1_amd64.deb` (Debian/Ubuntu) or `Lados_0.2.1_amd64.AppImage` |
-| **Windows** | `Lados_0.2.1_x64-setup.exe` (unsigned — SmartScreen will warn; expected) |
+| **Linux** | `Lados_0.2.2_amd64.deb` (Debian/Ubuntu) or `Lados_0.2.2_amd64.AppImage` |
+| **Windows** | `Lados_0.2.2_x64-setup.exe` (unsigned — SmartScreen will warn; expected) |
 
 The app is a **GUI**. On a headless Linux machine it needs a virtual display:
 
 ```bash
-xvfb-run -a ./Lados_0.2.1_amd64.AppImage --appimage-extract-and-run
+xvfb-run -a ./Lados_0.2.2_amd64.AppImage --appimage-extract-and-run
 # or, after installing the .deb:  xvfb-run -a lados
 ```
 

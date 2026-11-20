@@ -47,10 +47,10 @@ the main path. If you also want the app and the extension, note there is **no "s
 server is compiled into the build, so use one made for staging:
 
 1. **Pre-release build (preferred):** download with `curl -L -O` from `<PRE_RELEASE_BASE>`.
-   - **Linux x86_64:** `<PRE_RELEASE_BASE>/Lados_0.2.1_amd64.deb` (Debian/Ubuntu) or
-     `<PRE_RELEASE_BASE>/Lados_0.2.1_amd64.AppImage`. The app is a **GUI**, so on a headless machine
+   - **Linux x86_64:** `<PRE_RELEASE_BASE>/Lados_0.2.2_amd64.deb` (Debian/Ubuntu) or
+     `<PRE_RELEASE_BASE>/Lados_0.2.2_amd64.AppImage`. The app is a **GUI**, so on a headless machine
      run it under `xvfb-run -a …`; if FUSE is missing, use `--appimage-extract-and-run`.
-   - **Windows x64:** `<PRE_RELEASE_BASE>/Lados_0.2.1_x64-setup.exe` — unsigned, so SmartScreen warns.
+   - **Windows x64:** `<PRE_RELEASE_BASE>/Lados_0.2.2_x64-setup.exe` — unsigned, so SmartScreen warns.
    - All assets: `<PRE_RELEASE_URL>`. No asset for your platform? Use option 2.
 2. **Build from source** (the repository is public):
 

@@ -43,13 +43,13 @@ that was built *for staging*. Two ways to get it:
 1. **Pre-release build (preferred).** Download your platform's asset — the direct base URL works with
    `curl -L -O` (a browser works too):
    - base: `<PRE_RELEASE_BASE>`
-   - **Linux x86_64:** `<PRE_RELEASE_BASE>/Lados_0.2.1_amd64.deb` (Debian/Ubuntu), or
-     `<PRE_RELEASE_BASE>/Lados_0.2.1_amd64.AppImage`.
+   - **Linux x86_64:** `<PRE_RELEASE_BASE>/Lados_0.2.2_amd64.deb` (Debian/Ubuntu), or
+     `<PRE_RELEASE_BASE>/Lados_0.2.2_amd64.AppImage`.
      The app is a **GUI**: on a headless machine it needs a virtual display, so run it under
-     `xvfb-run`, e.g. `xvfb-run -a ./Lados_0.2.1_amd64.AppImage --appimage-extract-and-run`
-     (or `sudo apt install ./Lados_0.2.1_amd64.deb` then `xvfb-run -a lados`). The AppImage needs
+     `xvfb-run`, e.g. `xvfb-run -a ./Lados_0.2.2_amd64.AppImage --appimage-extract-and-run`
+     (or `sudo apt install ./Lados_0.2.2_amd64.deb` then `xvfb-run -a lados`). The AppImage needs
      FUSE; `--appimage-extract-and-run` avoids it.
-   - **Windows x64:** `<PRE_RELEASE_BASE>/Lados_0.2.1_x64-setup.exe` — unsigned, so SmartScreen warns.
+   - **Windows x64:** `<PRE_RELEASE_BASE>/Lados_0.2.2_x64-setup.exe` — unsigned, so SmartScreen warns.
    - All assets are listed at `<PRE_RELEASE_URL>`. If none matches your platform, use option 2.
 2. **Build from source** (the repository is public, so this is realistic):
 

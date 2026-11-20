@@ -22,7 +22,7 @@ on:
       tag:
         description: "Release tag to create/update — use a fresh one per round"
         required: true
-        default: "staging-2"
+        default: "staging-3"
       draft:
         description: "Keep it a draft (non-public; only maintainers can download)"
         type: boolean
