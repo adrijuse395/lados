@@ -99,12 +99,15 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
     }
 
     // **Only a browser extension may call the bridge.** A web page carries its own `http(s)://`
-    // origin, a sandboxed frame carries the literal `null`, and a request with no `Origin` at all
-    // is neither — all three are refused. What this cannot stop is a *local process*, which can
-    // forge any header; that is what the per-install pairing secret is for.
-    let origin = match header_value(&request, "origin") {
-        Some(origin) if allowed_origin(&origin) => origin,
-        _ => {
+    // origin and a sandboxed frame the literal `null`, so a *present* `Origin` that is not an
+    // extension's is refused. But a Chrome MV3 service worker sends **no `Origin` at all** on a
+    // privileged fetch (the red-team report, N1), so a missing `Origin` is allowed — only because
+    // the pairing token is then required, and a web page cannot send a custom header without a
+    // CORS preflight, which carries the page's origin and is refused here first. A request with no
+    // `Origin` therefore still has to know the token, exactly like a local process would.
+    let origin = match classify_origin(header_value(&request, "origin")) {
+        Ok(origin) => origin,
+        Err(()) => {
             respond(&mut stream, 403, r#"{"error":"forbidden"}"#, None);
             return;
         }
@@ -124,11 +127,11 @@ fn handle_client(app: Arc<AppHandle>, mut stream: TcpStream) {
         state.autofill_paired(header_value(&request, "x-lados-token").as_deref())
     });
     if !paired {
-        respond(&mut stream, 403, r#"{"error":"not paired"}"#, Some(origin.as_str()));
+        respond(&mut stream, 403, r#"{"error":"not paired"}"#, origin.as_deref());
         return;
     }
 
-    let cors = Some(origin.as_str());
+    let cors = origin.as_deref();
 
     if method == "OPTIONS" {
         respond(&mut stream, 204, "", cors);
@@ -273,6 +276,20 @@ fn allowed_origin(origin: &str) -> bool {
     lower.starts_with("chrome-extension://") || lower.starts_with("moz-extension://")
 }
 
+/// Classifies a request's `Origin` header (the red-team report, N1):
+/// - `Ok(Some(origin))` — a browser-extension origin, echoed back in the CORS reply;
+/// - `Ok(None)` — no `Origin` at all, which is how a Chrome MV3 service worker calls the bridge.
+///   Allowed only because the pairing token is still required below, and a web page cannot send a
+///   custom header without a preflight that carries its (refused) origin;
+/// - `Err(())` — an `Origin` that is neither: a web page, a sandboxed frame (`null`), `file://`.
+fn classify_origin(origin: Option<String>) -> Result<Option<String>, ()> {
+    match origin {
+        None => Ok(None),
+        Some(value) if allowed_origin(&value) => Ok(Some(value)),
+        Some(_) => Err(()),
+    }
+}
+
 /// Whether the request was addressed to loopback by name and not to an attacker's hostname that
 /// resolves here (DNS rebinding).
 fn host_is_loopback(request: &str) -> bool {
@@ -395,6 +412,21 @@ mod tests {
         assert!(!allowed_origin("null"));
         assert!(!allowed_origin("file://"));
         assert!(!allowed_origin(""));
+    }
+
+    #[test]
+    fn a_missing_origin_is_allowed_for_the_extension_but_a_web_page_is_refused() {
+        // A Chrome MV3 service worker sends no Origin (N1); it is allowed here and must still pass
+        // the pairing-token check, which happens after this gate.
+        assert!(matches!(classify_origin(None), Ok(None)));
+        assert!(matches!(
+            classify_origin(Some("chrome-extension://abc".into())),
+            Ok(Some(_))
+        ));
+        // A page, a sandboxed frame and a file:// document are still refused when they do send one.
+        assert!(classify_origin(Some("https://evil.example".into())).is_err());
+        assert!(classify_origin(Some("null".into())).is_err());
+        assert!(classify_origin(Some("file://".into())).is_err());
     }
 
     #[test]
