@@ -5,11 +5,11 @@ use super::*;
 // ----- Import, export and merge -----
 
 #[tauri::command(async)]
-pub fn import_csv(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<ImportSummary> {
+pub fn import_csv(app: AppHandle, state: State<'_, AppState>, path: String, folder_id: Option<Uuid>) -> Result<ImportSummary> {
     let path = PathBuf::from(path);
     let bytes = Zeroizing::new(storage::read_file(&path)?);
     let source = source_name(&path);
-    modify(&app, &state, |vault| csv_io::import_csv(vault, &bytes, &source))
+    modify(&app, &state, |vault| csv_io::import_csv(vault, &bytes, &source, folder_id))
 }
 
 #[tauri::command(async)]
@@ -19,6 +19,7 @@ pub fn import_kdbx(
     path: String,
     password: String,
     key_file: Option<String>,
+    folder_id: Option<Uuid>,
 ) -> Result<ImportSummary> {
     let password = Zeroizing::new(password);
     state.with_vault(|_| Ok(()))?;
@@ -27,7 +28,7 @@ pub fn import_kdbx(
     let key_file = read_key_file(key_file.as_deref())?;
     let database = keepass_io::open_kdbx(&bytes, &password, key_file.as_ref().map(|k| k.as_slice()))?;
     let source = source_name(&path);
-    modify(&app, &state, |vault| keepass_io::import_kdbx(vault, &database, &source))
+    modify(&app, &state, |vault| keepass_io::import_kdbx(vault, &database, &source, folder_id))
 }
 
 /// Writes every secret in clear text: the interface warns the user before calling this, and asks

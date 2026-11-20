@@ -74,11 +74,11 @@ pub fn open_kdbx(bytes: &[u8], password: &str, key_file: Option<&[u8]>) -> Resul
     })
 }
 
-/// Adds the content of a KeePass database to the vault, inside a new top-level folder named
-/// after the file. The recycle bin is left out.
-pub fn import_kdbx(vault: &mut Vault, database: &Database, source_name: &str) -> Result<ImportSummary> {
+/// Adds the content of a KeePass database to the vault, inside a new folder named after the file —
+/// under `parent` when the user has a folder selected (the red-team report, N6).
+pub fn import_kdbx(vault: &mut Vault, database: &Database, source_name: &str, parent: Option<Uuid>) -> Result<ImportSummary> {
     let folders_before = vault.folders.len();
-    let root = vault.find_or_add_folder(None, source_name, None)?;
+    let root = vault.find_or_add_folder(parent, source_name, None)?;
     let mut importer = Importer {
         database,
         icons: HashMap::new(),
@@ -482,7 +482,7 @@ mod tests {
 
         let database = open_kdbx(&bytes, "export", None).unwrap();
         let mut copy = Vault::new("Copy").unwrap();
-        let summary = import_kdbx(&mut copy, &database, "Personal").unwrap();
+        let summary = import_kdbx(&mut copy, &database, "Personal", None).unwrap();
         assert_eq!(summary.entries_imported, 1);
 
         let entry = &copy.entries[0];
@@ -508,7 +508,7 @@ mod tests {
         let work = copy.folders.iter().find(|f| f.name == "Work").unwrap();
         assert_eq!(work.icon, Some(Icon::Builtin("bank".into())));
 
-        let again = import_kdbx(&mut copy, &database, "Personal").unwrap();
+        let again = import_kdbx(&mut copy, &database, "Personal", None).unwrap();
         assert_eq!(again.duplicates_skipped, 1);
     }
 
@@ -558,7 +558,7 @@ X2k/ePAin53FU3VsPwJ6HORGdJVyafp/72udUQFOv2M8CDmOrgAAAAA=";
         let bytes = BASE64.decode(NON_CONTIGUOUS_KDBX_B64).unwrap();
         let database = open_kdbx(&bytes, "KdbxTest-2026!", None).expect("the file must open");
         let mut vault = Vault::new("Copy").unwrap();
-        let summary = import_kdbx(&mut vault, &database, "fixture").unwrap();
+        let summary = import_kdbx(&mut vault, &database, "fixture", None).unwrap();
         assert_eq!(summary.entries_imported, 2);
         let alpha = vault
             .entries

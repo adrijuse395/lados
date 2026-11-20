@@ -147,6 +147,11 @@ export interface DialogOptions<T> {
   onSubmit: () => Promise<T | undefined> | T | undefined;
   /** Asked before closing without submitting. Return `false` to stay. */
   confirmDismiss?: () => boolean | Promise<boolean>;
+  /**
+   * Close (as if cancelled) after this long. Used by the fill prompt, which must not outlive the
+   * bridge's 30-second wait (the red-team report, N5).
+   */
+  timeoutMs?: number;
 }
 
 /** A dialog with a form. Resolves with the submitted value, or `null` if cancelled. */
@@ -250,6 +255,10 @@ export function showDialog<T>(options: DialogOptions<T>): Promise<T | null> {
         return false;
       },
     });
+
+    if (options.timeoutMs && options.timeoutMs > 0) {
+      window.setTimeout(() => finish(null), options.timeoutMs);
+    }
   });
 }
 

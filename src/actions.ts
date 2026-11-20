@@ -394,7 +394,7 @@ export const importCsv = () =>
     const path = await backend.pickOpenPath("csv", "Import a CSV file");
     if (!path) return;
     const summary = await withBusy("Importing entries…", async () => {
-      const result = await backend.importCsv(path);
+      const result = await backend.importCsv(path, currentFolderId());
       await reloadVault();
       return result;
     });
@@ -411,7 +411,7 @@ export const importKdbx = () =>
       submitLabel: "Import",
       busyLabel: "Importing…",
       passwordOptional: true,
-      action: ({ password, keyFile }) => backend.importKdbx(path, password, keyFile),
+      action: ({ password, keyFile }) => backend.importKdbx(path, password, keyFile, currentFolderId()),
     });
     if (!summary) return;
     await withBusy("Loading the vault…", () => reloadVault());

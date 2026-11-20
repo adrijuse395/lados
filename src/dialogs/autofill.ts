@@ -37,9 +37,13 @@ export async function askAutofillReveal(request: AutofillRevealRequest): Promise
           class: "muted",
           text: "Allow it only if you just asked to fill a login. If you deny, no password is sent.",
         }),
+        h("p", { class: "muted", text: "This closes by itself in a few seconds." }),
       ),
       cancelLabel: "Deny",
       submitLabel: "Allow",
+      // The bridge gives up after 30 seconds; close just before that, so the prompt never outlives
+      // the request it is answering (the red-team report, N5).
+      timeoutMs: 29000,
       onSubmit: () => true,
     });
     await answer(allowed === true);

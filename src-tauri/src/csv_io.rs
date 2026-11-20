@@ -8,6 +8,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::mem::discriminant;
 
 use chrono::NaiveDate;
+use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::{Error, Result};
@@ -280,16 +281,17 @@ fn parse(bytes: &[u8]) -> Result<(Vec<Row>, usize)> {
     Ok((rows, skipped))
 }
 
-/// Adds the entries of a CSV file to the vault, inside a new top-level folder named after
-/// the file. Entries already present in the same place are skipped, so importing twice is safe.
-pub fn import_csv(vault: &mut Vault, bytes: &[u8], source_name: &str) -> Result<ImportSummary> {
+/// Adds the entries of a CSV file to the vault, inside a new folder named after the file — under
+/// `parent` when the user has a folder selected, so the import lands where they are (the report,
+/// N6). Entries already present in the same place are skipped, so importing twice is safe.
+pub fn import_csv(vault: &mut Vault, bytes: &[u8], source_name: &str, parent: Option<Uuid>) -> Result<ImportSummary> {
     let (rows, rows_skipped) = parse(bytes)?;
     if rows.is_empty() {
         return Err(Error::Import("The file does not contain any entry".into()));
     }
 
     let folders_before = vault.folders.len();
-    let root = vault.find_or_add_folder(None, source_name, None)?;
+    let root = vault.find_or_add_folder(parent, source_name, None)?;
     let mut summary = ImportSummary {
         folder_name: source_name.to_string(),
         rows_skipped,
@@ -400,7 +402,7 @@ mod tests {
 
     fn import(text: &str) -> (Vault, ImportSummary) {
         let mut vault = Vault::new("Test").unwrap();
-        let summary = import_csv(&mut vault, text.as_bytes(), "Import").unwrap();
+        let summary = import_csv(&mut vault, text.as_bytes(), "Import", None).unwrap();
         (vault, summary)
     }
 
@@ -468,7 +470,7 @@ mod tests {
 
     #[test]
     fn files_without_known_columns_are_rejected() {        let mut vault = Vault::new("Test").unwrap();
-        let result = import_csv(&mut vault, b"foo,bar\n1,2\n", "Import");
+        let result = import_csv(&mut vault, b"foo,bar\n1,2\n", "Import", None);
         assert!(matches!(result, Err(Error::Import(_))));
     }
 
@@ -498,7 +500,7 @@ mod tests {
 
         let exported = export_csv(&vault).unwrap();
         let mut copy = Vault::new("Copy").unwrap();
-        let summary = import_csv(&mut copy, &exported, "Backup").unwrap();
+        let summary = import_csv(&mut copy, &exported, "Backup", None).unwrap();
         assert_eq!(summary.entries_imported, 2);
 
         let ssh = copy.entries.iter().find(|e| e.content.title.starts_with("SSH")).unwrap();
@@ -506,7 +508,7 @@ mod tests {
         assert_eq!(ssh.content, expected);
         assert_eq!(copy.folder_path(ssh.folder_id), vec!["Backup", "Work", "Servers"]);
 
-        let again = import_csv(&mut copy, &exported, "Backup").unwrap();
+        let again = import_csv(&mut copy, &exported, "Backup", None).unwrap();
         assert_eq!(again.entries_imported, 0);
         assert_eq!(again.duplicates_skipped, 2);
     }
@@ -567,7 +569,7 @@ mod tests {
         assert!(exported.contains(",=1+1,"), "the password is left exactly as it is");
 
         let mut copy = Vault::new("Copy").unwrap();
-        import_csv(&mut copy, exported.as_bytes(), "Backup").unwrap();
+        import_csv(&mut copy, exported.as_bytes(), "Backup", None).unwrap();
         assert_eq!(copy.entries[0].content.title, title);
         assert_eq!(copy.entries[0].content.username, username);
         assert_eq!(copy.entries[0].content.password, "=1+1");

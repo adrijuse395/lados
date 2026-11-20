@@ -189,9 +189,9 @@ export const backend = {
   copySecretText: (text: string) => call<void>("copy_secret_text", { text }),
 
   // Import, export and merge
-  importCsv: (path: string) => call<ImportSummary>("import_csv", { path }),
-  importKdbx: (path: string, password: string, keyFile: string | null) =>
-    call<ImportSummary>("import_kdbx", { path, password, keyFile }),
+  importCsv: (path: string, folderId: Uuid | null) => call<ImportSummary>("import_csv", { path, folderId }),
+  importKdbx: (path: string, password: string, keyFile: string | null, folderId: Uuid | null) =>
+    call<ImportSummary>("import_kdbx", { path, password, keyFile, folderId }),
   exportCsv: (path: string, password: string, keyFile: string | null) =>
     call<void>("export_csv", { path, password, keyFile }),
   exportKdbx: (path: string, password: string, keyFile: string | null) =>
