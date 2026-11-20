@@ -59,7 +59,10 @@ not.
 
 - **The providers' own systems** (Cloudflare's infrastructure, Gmail/Outlook, the stores' back ends)
   and **any account that is not the owner's** — never try to break into them or touch another tenant.
-- **Changing configuration.** Report a wrong setting; do not change it.
+- **Changing the owner's personal configuration.** Report a wrong setting in a personal account
+  (`adriajuse@gmail.com`, `ladospwm@proton.me`) — do not change it. (The **staging** environment is
+  disposable: the staging Worker, its D1 database, its R2 bucket and the test accounts may be changed
+  or deleted freely. See §9.)
 - **Paddle production**, and any payment system handling real money.
 - **Any other user's data.** If the tester can see something that looks like another person's data,
   **stop and report it** — do not open, copy or download it.
