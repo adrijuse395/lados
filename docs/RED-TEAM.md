@@ -51,8 +51,9 @@ not.
 - The **public website** (the `lados-web` project).
 - The **designated test accounts** — and only those.
 - The **owner's own configuration** of the services used: the Worker's bindings, routes and DNS, the
-  repository and its secrets, the Paddle **sandbox**, and the store listings. Read and verified —
-  never changed, and without spending real money.
+  repository and its secrets, the Paddle **sandbox**, and the store listings — and **what those
+  accounts or tokens permit that they should not** (an over-broad token, a public bucket, a route
+  anyone can invoke). Read and verified; never changed, and without spending real money.
 
 ### Out of scope — hard boundaries
 
