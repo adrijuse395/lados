@@ -525,4 +525,53 @@ mod tests {
         assert!(open_kdbx(&bytes, "pw", Some(key_file.as_bytes())).is_ok());
         assert!(matches!(open_kdbx(&bytes, "pw", None), Err(Error::InvalidCredentials)));
     }
+
+    // A `.kdbx` written with pykeepass, where the custom field `PIN` was added after the entry
+    // existed, so its `<String>` lands *after* `<AutoType>` in the XML. quick-xml's default
+    // deserializer rejected that as "duplicate field `String`" until `overlapped-lists` was enabled
+    // (the red-team report, H3). KDBX files are git-ignored, so the bytes are inlined.
+    const NON_CONTIGUOUS_KDBX_B64: &str = "\
+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";
+
+    #[test]
+    fn imports_a_kdbx_with_a_string_field_after_autotype() {
+        let bytes = BASE64.decode(NON_CONTIGUOUS_KDBX_B64).unwrap();
+        let database = open_kdbx(&bytes, "KdbxTest-2026!", None).expect("the file must open");
+        let mut vault = Vault::new("Copy").unwrap();
+        let summary = import_kdbx(&mut vault, &database, "fixture").unwrap();
+        assert_eq!(summary.entries_imported, 2);
+        let alpha = vault
+            .entries
+            .iter()
+            .find(|entry| entry.content.title == "KP Alpha")
+            .expect("KP Alpha is imported");
+        assert!(
+            alpha
+                .content
+                .custom_fields
+                .iter()
+                .any(|field| field.name == "PIN" && field.value == "1234"),
+            "the field added after <AutoType> must import"
+        );
+    }
 }

@@ -53,6 +53,12 @@ unicode-normalization = "0.1"
 csv = "1.4"
 keepass = { version = "0.17", features = ["save_kdbx4"] }
 base64 = "0.23"
+# `keepass` reads KDBX XML with quick-xml. Real files (from pykeepass, and KeePass itself when a
+# custom field is added later) can list a `<String>` field *after* `<AutoType>`, and quick-xml's
+# default deserializer rejects a repeated, non-contiguous element ("duplicate field `String`").
+# Enabling this feature makes it collect such lists; features unify across the graph, so it applies
+# to keepass's use too (the red-team report, H3).
+quick-xml = { version = "0.42", features = ["overlapped-lists"] }
 
 # Optional sync client (only compiled with the `sync` feature).
 # `rustls-no-provider` avoids reqwest's default `rustls` feature, which would drag in the heavy
