@@ -87,29 +87,55 @@ function customFieldRow(initial: CustomField, onRemove: (row: CustomFieldRow) =>
 }
 
 /** An entry editor that was interrupted (the vault locked) and has not been saved. Kept in memory
- *  only: an auto-lock used to throw away whatever the user had typed. */
+ *  only: an auto-lock used to throw away whatever the user had typed.
+ *
+ *  A draft belongs to **one** vault. It used to be global, so a draft typed in one vault was offered
+ *  in — and saved into — whatever vault was unlocked next, leaking secrets across vaults that can
+ *  have different passwords (the red-team report, N2). */
 export interface EditorDraft {
   entryId: Uuid | null;
   folderId: Uuid | null;
   content: EntryContent;
+  /** The vault the draft belongs to (its path), so it is never offered in another. */
+  vaultPath: string;
+  /** When it was captured, so a draft does not live forever. */
+  savedAt: number;
 }
 
+/** Drafts are dropped after this long, so a password does not linger for the whole session. */
+const DRAFT_TTL_MS = 15 * 60 * 1000;
+
+/** What an open editor can hand over (the vault binding is added by `captureUnsavedEditor`). */
+type EditorSnapshot = Omit<EditorDraft, "vaultPath" | "savedAt">;
+
 /** While an editor dialog is open, reads its current state (null when nothing was changed). */
-let openEditor: (() => EditorDraft | null) | null = null;
+let openEditor: (() => EditorSnapshot | null) | null = null;
 let unsavedEditor: EditorDraft | null = null;
 
 /** Remembers the open editor's unsaved work. Called just before the vault locks. */
 export function captureUnsavedEditor(): void {
   const draft = openEditor?.() ?? null;
   openEditor = null;
-  if (draft) unsavedEditor = draft;
+  const vaultPath = store.status?.vaultPath ?? null;
+  if (draft && vaultPath) unsavedEditor = { ...draft, vaultPath, savedAt: Date.now() };
+}
+
+/** Keeps the draft only while its own vault is the selected one; clears it otherwise. Called
+ *  whenever the session changes, so opening another vault (or closing the vault) drops it. */
+export function retainUnsavedEditorFor(vaultPath: string | null): void {
+  if (!unsavedEditor) return;
+  if (unsavedEditor.vaultPath !== vaultPath || Date.now() - unsavedEditor.savedAt > DRAFT_TTL_MS) {
+    unsavedEditor = null;
+  }
 }
 
 /** Offers to carry on with the entry that the lock interrupted. Returns the restored entry id. */
 export async function maybeRestoreUnsavedEditor(): Promise<Uuid | null> {
   const draft = unsavedEditor;
   unsavedEditor = null;
-  if (!draft) return null;
+  // Only for the vault it was written in, and only for a while (N2).
+  if (!draft || draft.vaultPath !== (store.status?.vaultPath ?? null)) return null;
+  if (Date.now() - draft.savedAt > DRAFT_TTL_MS) return null;
   const restore = await confirmDialog({
     title: "You had an unsaved entry",
     message: "The vault locked while you were editing, and the entry was not saved. Carry on where you left off?",

@@ -13,7 +13,7 @@ import { closeAllModals } from "./ui/modal";
 import { errorMessage, toast } from "./ui/toast";
 import { maybeShowExtensionInstall } from "./dialogs/browser-extension";
 import { describeChanges, hasChanges } from "./dialogs/reports";
-import { maybeRestoreUnsavedEditor } from "./dialogs/entry-editor";
+import { maybeRestoreUnsavedEditor, retainUnsavedEditorFor } from "./dialogs/entry-editor";
 
 function root(): HTMLElement {
   const element = document.getElementById("app");
@@ -124,6 +124,9 @@ function warnIfStaleBuild(status: AppStatus): void {
 export async function showStatus(status: AppStatus): Promise<void> {
   const previous = store.status;
   store.status = status;
+  // A draft belongs to the vault it was written in; drop it when another is selected or closed
+  // (the red-team report, N2).
+  retainUnsavedEditorFor(status.vaultPath ?? null);
   warnIfStaleBuild(status);
   applyTheme(status.preferences.theme);
 
